@@ -33,8 +33,12 @@ jobs:
           SYSTEM_ACCESSTOKEN: ${{ secrets.ADO_PAT }}
 
       - name: Upload to SharePoint
-        if: ${{ secrets.GRAPH_CLIENT_ID != '' }}
-        run: python upload_to_sharepoint.py
+        run: |
+          if [ -z "$GRAPH_CLIENT_ID" ]; then
+            echo "SharePoint secrets not configured, skipping upload"
+            exit 0
+          fi
+          python upload_to_sharepoint.py
         env:
           GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
           GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
@@ -43,8 +47,13 @@ jobs:
           SHAREPOINT_FOLDER: ${{ vars.SHAREPOINT_FOLDER }}
 
       - name: Send Teams Notification
-        if: ${{ always() && secrets.TEAMS_WEBHOOK_URL != '' }}
-        run: python notify_teams.py
+        if: always()
+        run: |
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then
+            echo "Teams webhook not configured, skipping notification"
+            exit 0
+          fi
+          python notify_teams.py
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
           SHAREPOINT_DASHBOARD_URL: ${{ vars.SHAREPOINT_DASHBOARD_URL }}
