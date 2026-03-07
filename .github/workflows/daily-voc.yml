@@ -21,13 +21,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run VoC Pipeline
-        run: |
-          SKIP_ADO=""
-          if [ -z "$SYSTEM_ACCESSTOKEN" ]; then
-            echo "No ADO_PAT set, running with --skip-ado"
-            SKIP_ADO="--skip-ado"
-          fi
-          python main.py --platforms ios,mac,android $SKIP_ADO
+        run: python main.py --platforms ios,mac,android || python error_dashboard.py "$?"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SYSTEM_ACCESSTOKEN: ${{ secrets.ADO_PAT }}
