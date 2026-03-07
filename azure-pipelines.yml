@@ -1,0 +1,53 @@
+trigger: none  # No CI trigger — runs on schedule only
+
+schedules:
+  - cron: "0 6 * * *"     # Every day at 6 AM UTC
+    displayName: Daily VoC Analysis
+    branches:
+      include: [main]
+    always: true            # Run even if no code changes
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.11'
+    displayName: 'Use Python 3.11'
+
+  - script: |
+      pip install -r requirements.txt
+    displayName: 'Install dependencies'
+
+  - script: |
+      python main.py --platforms ios,mac,android
+    displayName: 'Run VoC Pipeline'
+    env:
+      ANTHROPIC_API_KEY: $(AnthropicApiKey)
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+  - script: |
+      python upload_to_sharepoint.py
+    displayName: 'Upload to SharePoint'
+    env:
+      GRAPH_CLIENT_ID: $(GraphClientId)
+      GRAPH_CLIENT_SECRET: $(GraphClientSecret)
+      GRAPH_TENANT_ID: $(GraphTenantId)
+      SHAREPOINT_SITE_ID: $(SharePointSiteId)
+      SHAREPOINT_FOLDER: $(SharePointFolder)
+
+  - script: |
+      python notify_teams.py
+    displayName: 'Send Teams Notification'
+    condition: always()
+    env:
+      TEAMS_WEBHOOK_URL: $(TeamsWebhookUrl)
+      SHAREPOINT_DASHBOARD_URL: $(SharePointDashboardUrl)
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: 'output_v3'
+      artifact: 'voc-dashboard'
+    displayName: 'Publish dashboard artifact'
+    condition: always()

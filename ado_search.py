@@ -1,11 +1,20 @@
-"""Azure DevOps Work Item Search — freshness + area path filtering (v3)."""
+"""Azure DevOps Work Item Search — freshness + area path filtering (v3).
+
+Supports two auth modes:
+  - Local: uses `az rest` (requires `az login`)
+  - CI/CD: uses SYSTEM_ACCESSTOKEN env var with direct HTTP requests
+"""
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 import re
 import subprocess
 from datetime import datetime, timedelta, timezone
+
+import requests as http_requests
 
 import config
 from models import TopicCluster, ADOMatch
@@ -20,9 +29,11 @@ def correlate_clusters(
 
     Filters by: area path (platform), freshness (max_age_days).
     """
-    if not _check_az_login():
-        print("  [warn] ADO: az login expired, skipping")
+    auth_mode = _get_auth_mode()
+    if auth_mode == "none":
+        print("  [warn] ADO: no auth available (az login or SYSTEM_ACCESSTOKEN), skipping")
         return clusters
+    print(f"  ADO auth: {auth_mode}")
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
     area_paths = config.ADO_AREA_PATHS.get(platform, [])
@@ -46,12 +57,17 @@ def correlate_clusters(
     return clusters
 
 
-def _check_az_login() -> bool:
+def _get_auth_mode() -> str:
+    """Determine auth mode: 'pat' if SYSTEM_ACCESSTOKEN is set (CI), else 'az'."""
+    if os.environ.get("SYSTEM_ACCESSTOKEN"):
+        return "pat"
     try:
         r = subprocess.run(["az", "account", "show"], capture_output=True, text=True, timeout=10)
-        return r.returncode == 0
+        if r.returncode == 0:
+            return "az"
     except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
+        pass
+    return "none"
 
 
 def _extract_keywords(topic: str, platform: str = "") -> str:
@@ -83,13 +99,42 @@ def _search_bugs(keywords: str, area_paths: list[str]) -> list[ADOMatch]:
     if area_paths:
         filters["System.AreaPath"] = area_paths
 
-    body = json.dumps({
+    payload = {
         "searchText": keywords,
         "$top": config.ADO_MAX_RESULTS,
         "$skip": 0,
         "filters": filters,
         "sortOptions": [{"field": "System.ChangedDate", "sortOrder": "DESC"}],
-    })
+    }
+
+    auth_mode = _get_auth_mode()
+    if auth_mode == "pat":
+        return _search_via_http(url, payload)
+    return _search_via_az_rest(url, payload)
+
+
+def _search_via_http(url: str, payload: dict) -> list[ADOMatch]:
+    """Direct HTTP request using SYSTEM_ACCESSTOKEN (for CI/CD)."""
+    pat = os.environ["SYSTEM_ACCESSTOKEN"]
+    b64 = base64.b64encode(f":{pat}".encode()).decode()
+    headers = {
+        "Authorization": f"Basic {b64}",
+        "Content-Type": "application/json",
+    }
+    try:
+        resp = http_requests.post(url, json=payload, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            if resp.status_code in (401, 403):
+                raise RuntimeError(f"ADO auth error: {resp.status_code}")
+            return []
+        return _parse_results(resp.json())
+    except http_requests.RequestException:
+        return []
+
+
+def _search_via_az_rest(url: str, payload: dict) -> list[ADOMatch]:
+    """Use az rest CLI (for local development)."""
+    body = json.dumps(payload)
     try:
         r = subprocess.run(
             ["az", "rest", "--method", "post", "--url", url,
