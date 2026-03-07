@@ -1,0 +1,21 @@
+# Output directories
+output/
+output_v1/
+output_v2/
+output_v3/
+
+# Cache
+cache/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
