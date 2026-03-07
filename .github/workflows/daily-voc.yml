@@ -21,12 +21,19 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run VoC Pipeline
-        run: python main.py --platforms ios,mac,android
+        run: |
+          SKIP_ADO=""
+          if [ -z "$SYSTEM_ACCESSTOKEN" ]; then
+            echo "No ADO_PAT set, running with --skip-ado"
+            SKIP_ADO="--skip-ado"
+          fi
+          python main.py --platforms ios,mac,android $SKIP_ADO
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SYSTEM_ACCESSTOKEN: ${{ secrets.ADO_PAT }}
 
       - name: Upload to SharePoint
+        if: ${{ secrets.GRAPH_CLIENT_ID != '' }}
         run: python upload_to_sharepoint.py
         env:
           GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
@@ -36,7 +43,7 @@ jobs:
           SHAREPOINT_FOLDER: ${{ vars.SHAREPOINT_FOLDER }}
 
       - name: Send Teams Notification
-        if: always()
+        if: ${{ always() && secrets.TEAMS_WEBHOOK_URL != '' }}
         run: python notify_teams.py
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
