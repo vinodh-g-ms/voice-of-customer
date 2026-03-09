@@ -45,21 +45,6 @@ jobs:
           SHAREPOINT_SITE_ID: ${{ secrets.SHAREPOINT_SITE_ID }}
           SHAREPOINT_FOLDER: ${{ vars.SHAREPOINT_FOLDER }}
 
-      - name: Deploy to GitHub Pages
-        run: |
-          cd output_v3
-          # Rename dashboard to index.html for GitHub Pages
-          cp pulse_dashboard_v3.html index.html
-          cd ..
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan gh-pages-temp
-          git rm -rf . 2>/dev/null || true
-          cp -r output_v3/* .
-          git add index.html pulse_dashboard_v3.html architecture.html 2>/dev/null || git add index.html
-          git commit -m "Deploy dashboard $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git push origin HEAD:gh-pages --force
-
       - name: Send Teams Notification
         if: always()
         run: |
@@ -79,3 +64,17 @@ jobs:
           name: voc-dashboard
           path: output_v3/
           retention-days: 30
+
+      - name: Deploy to GitHub Pages
+        run: |
+          cd output_v3
+          cp pulse_dashboard_v3.html index.html
+          cd ..
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan gh-pages-temp
+          git rm -rf . 2>/dev/null || true
+          cp -r output_v3/* .
+          git add index.html pulse_dashboard_v3.html architecture.html 2>/dev/null || git add index.html
+          git commit -m "Deploy dashboard $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push origin HEAD:gh-pages --force
