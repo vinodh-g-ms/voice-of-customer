@@ -6,8 +6,13 @@ import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
+import os
+
 import config
 from models import CompositePulseReport, PulseReport, TopicCluster
+
+GITHUB_REPO = "vinodh-g-ms/voice-of-customer"
+DASHBOARD_URL = f"https://{GITHUB_REPO.split('/')[0]}.github.io/{GITHUB_REPO.split('/')[1]}/"
 
 OUTPUT_DIR = Path(__file__).parent / "output_v3"
 
@@ -135,9 +140,14 @@ def _build_html(comp, topic):
 {plat_panes}
 </main>
 
+{_health_section(comp)}
+
+{_feedback_section()}
+
 <footer class="footer">
   <p class="footer-main">Voice of Customer &middot; Outlook Team &middot; FHL26</p>
   <p class="footer-sub">Powered by Customer Pulse v3 &middot; AI-Augmented Analytics Pipeline</p>
+  <p class="footer-stats" id="view-stats"></p>
 </footer>
 
 <script>{_js()}</script>
@@ -394,6 +404,85 @@ def _create_url(c: TopicCluster, platform: str) -> str:
         "[System.Description]": desc,
     })
     return f"{config.ADO_ORG_URL}/{config.ADO_PROJECT}/_workitems/create/Bug?{params}"
+
+
+def _health_section(comp: CompositePulseReport) -> str:
+    """Generate a pipeline health status section showing integration status."""
+    checks = []
+
+    # Check data sources across all reports
+    all_sources = {}
+    total_reviews = 0
+    for rpt in comp.reports.values():
+        total_reviews += rpt.total_reviews
+        for src, cnt in rpt.source_counts.items():
+            all_sources[src] = all_sources.get(src, 0) + cnt
+
+    src_labels = {"appstore": "App Store", "playstore": "Play Store", "reddit": "Reddit", "msqa": "MS Q&A"}
+    for src_key, label in src_labels.items():
+        cnt = all_sources.get(src_key, 0)
+        if cnt > 0:
+            checks.append(f'<div class="health-item health-ok"><span class="health-dot dot-ok"></span>{label}<span class="health-val">{cnt:,} reviews</span></div>')
+        else:
+            checks.append(f'<div class="health-item health-skip"><span class="health-dot dot-skip"></span>{label}<span class="health-val">No data</span></div>')
+
+    # ADO check
+    ado_total = sum(len(c.ado_matches) for rpt in comp.reports.values() for c in rpt.clusters)
+    if ado_total > 0:
+        checks.append(f'<div class="health-item health-ok"><span class="health-dot dot-ok"></span>ADO Bug Linking<span class="health-val">{ado_total} bugs</span></div>')
+    elif os.environ.get("SYSTEM_ACCESSTOKEN"):
+        checks.append('<div class="health-item health-warn"><span class="health-dot dot-warn"></span>ADO Bug Linking<span class="health-val">No matches</span></div>')
+    else:
+        checks.append('<div class="health-item health-skip"><span class="health-dot dot-skip"></span>ADO Bug Linking<span class="health-val">Not configured</span></div>')
+
+    # Claude AI (always working if we got here)
+    checks.append(f'<div class="health-item health-ok"><span class="health-dot dot-ok"></span>Claude AI Analysis<span class="health-val">{len(comp.reports)} reports</span></div>')
+
+    checks_html = "\n".join(checks)
+
+    return f"""
+<section class="health-bar" id="health">
+  <div class="health-inner">
+    <h3 class="health-title">Pipeline Health</h3>
+    <div class="health-grid">
+      {checks_html}
+    </div>
+    <div class="health-footer">
+      <span>Last run: {comp.generated_at.strftime('%B %d, %Y at %H:%M UTC')}</span>
+      <span class="health-sep">&middot;</span>
+      <a href="https://github.com/{GITHUB_REPO}/actions" target="_blank">View pipeline logs</a>
+      <span class="health-sep">&middot;</span>
+      <a href="https://github.com/{GITHUB_REPO}/settings/secrets/actions" target="_blank">Manage secrets</a>
+    </div>
+  </div>
+</section>"""
+
+
+def _feedback_section() -> str:
+    """Generate a feedback & analytics tracking section."""
+    issue_url = f"https://github.com/{GITHUB_REPO}/issues/new"
+    return f"""
+<section class="feedback-section" id="feedback">
+  <div class="feedback-inner">
+    <h3 class="feedback-title">Was this dashboard helpful?</h3>
+    <p class="feedback-sub">Your feedback helps us improve the Voice of Customer pipeline.</p>
+    <div class="feedback-btns">
+      <button class="fb-btn fb-yes" onclick="sendFeedback('helpful')">Yes, very helpful</button>
+      <button class="fb-btn fb-ok" onclick="sendFeedback('somewhat')">Somewhat helpful</button>
+      <button class="fb-btn fb-no" onclick="sendFeedback('not_helpful')">Needs improvement</button>
+    </div>
+    <div class="feedback-thanks" id="fb-thanks" style="display:none">
+      <p>Thank you for your feedback!</p>
+    </div>
+    <div class="feedback-links">
+      <a href="{issue_url}?title=Dashboard+Feedback&labels=feedback&body=What+would+make+this+dashboard+more+useful?" target="_blank">Share detailed feedback</a>
+      <span>&middot;</span>
+      <a href="{issue_url}?title=Bug+Report&labels=bug&body=Describe+the+issue..." target="_blank">Report an issue</a>
+      <span>&middot;</span>
+      <a href="https://github.com/{GITHUB_REPO}" target="_blank">View source code</a>
+    </div>
+  </div>
+</section>"""
 
 
 def _e(t: str) -> str:
@@ -932,6 +1021,121 @@ body {
     .platform-nav { gap: 2px; }
     .plat-tab { padding: 8px 14px; font-size: 14px; }
 }
+
+/* ═══ Pipeline Health ═══ */
+.health-bar {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 22px 32px;
+}
+.health-inner {
+    background: #fff;
+    border-radius: 18px;
+    padding: 28px 32px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.04);
+    border: 1px solid rgba(0,0,0,.04);
+}
+.health-title {
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #86868b;
+    margin-bottom: 16px;
+}
+.health-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+.health-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+}
+.health-ok { background: #f0faf0; color: #1d1d1f; }
+.health-warn { background: #fffbf0; color: #1d1d1f; }
+.health-skip { background: #f5f5f7; color: #86868b; }
+.health-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.dot-ok { background: #34C759; }
+.dot-warn { background: #FF9500; }
+.dot-skip { background: #c7c7cc; }
+.health-val {
+    margin-left: auto;
+    font-size: 13px;
+    color: #86868b;
+    font-weight: 400;
+}
+.health-footer {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #f0f0f5;
+    font-size: 13px;
+    color: #86868b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.health-footer a { color: #0071e3; text-decoration: none; }
+.health-footer a:hover { text-decoration: underline; }
+.health-sep { color: #d2d2d7; }
+
+/* ═══ Feedback Section ═══ */
+.feedback-section {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 0 22px 32px;
+}
+.feedback-inner {
+    background: #fff;
+    border-radius: 18px;
+    padding: 32px;
+    text-align: center;
+    box-shadow: 0 2px 12px rgba(0,0,0,.04);
+    border: 1px solid rgba(0,0,0,.04);
+}
+.feedback-title {
+    font-size: 22px; font-weight: 700;
+    letter-spacing: -0.02em; margin-bottom: 6px;
+}
+.feedback-sub {
+    color: #86868b; font-size: 15px; margin-bottom: 20px;
+}
+.feedback-btns {
+    display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+}
+.fb-btn {
+    padding: 10px 24px; border-radius: 12px; border: 1px solid #d2d2d7;
+    background: #fff; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+}
+.fb-btn:hover { transform: translateY(-1px); }
+.fb-yes { color: #248A3D; }
+.fb-yes:hover { background: #e8fae8; border-color: #34C759; }
+.fb-ok { color: #0071e3; }
+.fb-ok:hover { background: #e8f2ff; border-color: #0071e3; }
+.fb-no { color: #FF9500; }
+.fb-no:hover { background: #fff8e1; border-color: #FF9500; }
+.feedback-thanks {
+    padding: 16px; color: #248A3D; font-weight: 600; font-size: 15px;
+}
+.feedback-links {
+    margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f5;
+    font-size: 13px; color: #86868b;
+    display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+}
+.feedback-links a { color: #0071e3; text-decoration: none; }
+.feedback-links a:hover { text-decoration: underline; }
+.footer-stats {
+    color: #c7c7cc; font-size: 11px; margin-top: 8px;
+}
 """
 
 
@@ -1009,4 +1213,48 @@ var observer = new IntersectionObserver(function(entries) {
     });
 }, { threshold: 0.3 });
 document.querySelectorAll('.stat-num[data-count]').forEach(function(el) { observer.observe(el); });
+
+// ═══ Feedback & Analytics ═══
+function sendFeedback(type) {
+    // Store in localStorage
+    var key = 'voc_feedback';
+    var data = JSON.parse(localStorage.getItem(key) || '[]');
+    data.push({ type: type, date: new Date().toISOString() });
+    localStorage.setItem(key, JSON.stringify(data));
+
+    // Hide buttons, show thanks
+    document.querySelector('.feedback-btns').style.display = 'none';
+    document.getElementById('fb-thanks').style.display = 'block';
+}
+
+// View counter (localStorage-based)
+(function() {
+    var key = 'voc_views';
+    var data = JSON.parse(localStorage.getItem(key) || '{"total":0,"sessions":{}}');
+    var today = new Date().toISOString().split('T')[0];
+
+    data.total++;
+    data.sessions[today] = (data.sessions[today] || 0) + 1;
+
+    // Keep only last 30 days
+    var keys = Object.keys(data.sessions).sort();
+    while (keys.length > 30) { delete data.sessions[keys.shift()]; }
+
+    localStorage.setItem(key, JSON.stringify(data));
+
+    // Display stats
+    var uniqueDays = Object.keys(data.sessions).length;
+    var el = document.getElementById('view-stats');
+    if (el) el.textContent = 'Views: ' + data.total + ' total · ' + uniqueDays + ' unique days';
+
+    // Show feedback summary
+    var fb = JSON.parse(localStorage.getItem('voc_feedback') || '[]');
+    if (fb.length > 0) {
+        var counts = { helpful: 0, somewhat: 0, not_helpful: 0 };
+        fb.forEach(function(f) { counts[f.type] = (counts[f.type] || 0) + 1; });
+        var total = fb.length;
+        var score = ((counts.helpful * 100 + counts.somewhat * 50) / total).toFixed(0);
+        if (el) el.textContent += ' · Helpfulness: ' + score + '% (' + total + ' responses)';
+    }
+})();
 """
