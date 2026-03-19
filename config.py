@@ -40,7 +40,7 @@ MSQA_PLATFORM_URLS = {
 MSQA_MAX_PAGES = 5
 
 # ── Claude API ─────────────────────────────────────────────────────
-CLAUDE_MODEL = "claude-sonnet-4-6-20250514"
+CLAUDE_MODEL = "claude-sonnet-4-20250514"
 CLAUDE_MAX_REVIEWS = 500
 CLAUDE_MAX_TOKENS = 4096
 
