@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 
 import requests as http_requests
@@ -46,9 +47,15 @@ def correlate_clusters(
             matches = _search_bugs(keywords, area_paths)
             # Filter to bugs updated within window
             fresh = [m for m in matches if m.changed_date is None or m.changed_date >= cutoff]
-            cluster.ado_matches = fresh
-            if fresh:
-                print(f"  ADO: '{cluster.topic}' -> {len(fresh)} bugs ({len(matches)} total)")
+            # Relevance filter: only keep bugs whose title is meaningfully related
+            relevant = _rank_by_relevance(fresh, cluster.topic, cluster.summary)
+            cluster.ado_matches = relevant
+            if relevant:
+                dropped = len(fresh) - len(relevant)
+                extra = f" (dropped {dropped} low-relevance)" if dropped else ""
+                print(f"  ADO: '{cluster.topic}' -> {len(relevant)} bugs{extra}")
+            elif fresh:
+                print(f"  ADO: '{cluster.topic}' -> 0 relevant ({len(fresh)} didn't match)")
             elif matches:
                 print(f"  ADO: '{cluster.topic}' -> 0 fresh ({len(matches)} stale >{max_age_days}d)")
         except Exception as e:
@@ -105,6 +112,52 @@ def _extract_keywords(topic: str, platform: str = "") -> str:
         keywords = [prefix] + keywords
 
     return " ".join(keywords[:6])
+
+
+def _rank_by_relevance(
+    matches: list[ADOMatch], topic: str, summary: str = "",
+    min_score: float = 0.15,
+) -> list[ADOMatch]:
+    """Score and filter ADO bugs by relevance to the cluster topic.
+
+    Scoring: keyword overlap between cluster topic/summary and bug title.
+    Title match is primary; summary provides secondary signal.
+    """
+    stop = {
+        "the", "a", "an", "is", "are", "was", "were", "in", "on", "at",
+        "to", "for", "of", "with", "not", "and", "or", "but", "this", "that",
+        "outlook", "app", "issue", "problem", "bug", "issues", "problems",
+        "ios", "mac", "macos", "android", "mobile", "desktop", "re",
+    }
+
+    def _keywords(text: str) -> set[str]:
+        return {w for w in re.findall(r'\b[a-z]{3,}\b', text.lower())} - stop
+
+    topic_kw = _keywords(topic)
+    summary_kw = _keywords(summary) if summary else set()
+    # Union of topic + summary keywords gives us the full context
+    all_kw = topic_kw | summary_kw
+    if not all_kw:
+        return matches
+
+    scored: list[tuple[float, ADOMatch]] = []
+    for m in matches:
+        title_kw = _keywords(m.title)
+        if not title_kw:
+            continue
+
+        # Primary: keyword overlap with topic (0-1)
+        topic_overlap = len(topic_kw & title_kw) / max(len(topic_kw), 1)
+        # Secondary: keyword overlap with summary (0-1), weighted lower
+        summary_overlap = len(summary_kw & title_kw) / max(len(summary_kw), 1) if summary_kw else 0
+        # Fuzzy title similarity as tiebreaker
+        fuzzy = SequenceMatcher(None, topic.lower(), m.title.lower()).ratio()
+
+        score = (topic_overlap * 0.5) + (summary_overlap * 0.2) + (fuzzy * 0.3)
+        scored.append((score, m))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [m for score, m in scored if score >= min_score]
 
 
 def _search_bugs(keywords: str, area_paths: list[str]) -> list[ADOMatch]:

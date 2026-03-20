@@ -1,4 +1,9 @@
-"""Claude API sentiment analysis, topic clustering, and trend computation (v2)."""
+"""Sentiment analysis, topic clustering, and trend computation (v2).
+
+Uses a pluggable analyzer backend. Set ANALYSIS_PROVIDER env var to choose:
+  - "claude"  → Anthropic Claude API
+  - "copilot" → GitHub Models API
+"""
 
 from __future__ import annotations
 
@@ -9,99 +14,46 @@ import sys
 from difflib import SequenceMatcher
 
 import config
+from analyzers import get_analyzer
 from models import Review, TopicCluster, PulseReport
 
-try:
-    import anthropic
-except ImportError:
-    anthropic = None
+# Module-level analyzer instance (lazy-initialized)
+_analyzer = None
 
 
-def _build_system_prompt(platform: str = "", period_label: str = "") -> str:
-    platform_name = {
-        "ios": "iOS (iPhone/iPad)",
-        "mac": "macOS (Mac desktop app)",
-    }.get(platform, "all platforms")
+def _get_analyzer():
+    global _analyzer
+    if _analyzer is None:
+        _analyzer = get_analyzer()
+    return _analyzer
 
-    period_desc = ""
-    if period_label == "15d":
-        period_desc = " Focus on recent and emerging issues."
-    elif period_label == "90d":
-        period_desc = " Provide a broad landscape view of persistent themes."
 
-    return f"""You are an expert product analyst for Microsoft Outlook on {platform_name}.
-You analyze customer feedback to identify actionable themes.{period_desc}
-
-Analyze the provided customer reviews and return a JSON object with this EXACT schema:
-
-{{
-  "overall_sentiment": <float from -1.0 (very negative) to 1.0 (very positive)>,
-  "overall_summary": "<2-3 sentence summary of the feedback landscape>",
-  "clusters": [
-    {{
-      "topic": "<short topic name, e.g. 'Calendar sync failures'>",
-      "severity": "<critical|high|medium|low>",
-      "count": <number of reviews in this cluster>,
-      "sentiment_score": <float -1.0 to 1.0>,
-      "summary": "<1-2 sentence description of the issue>",
-      "quotes": ["<exact quote 1>", "<exact quote 2>"],
-      "source_breakdown": {{"appstore": 5, "reddit": 3, "msqa": 1}},
-      "version_breakdown": {{"4.2411.0": 3, "4.2412.1": 7}}
-    }}
-  ]
-}}
-
-Rules:
-- Return ONLY valid JSON, no markdown fences or extra text
-- Create 5-15 clusters, sorted by severity then count (descending)
-- Each cluster should have 2-4 representative quotes (exact text from reviews)
-- Severity: critical = app-breaking/data loss, high = major workflow blocker,
-  medium = annoying but workaround exists, low = cosmetic/minor
-- Merge similar topics
-- source_breakdown counts should sum to the cluster's count
-- version_breakdown: count reviews per app version when version info is available
-- If a topic filter was specified, focus clusters on that topic area"""
+def _get_max_reviews() -> int:
+    provider = os.environ.get("ANALYSIS_PROVIDER", "claude").lower()
+    return getattr(config, f"{provider.upper()}_MAX_REVIEWS", config.CLAUDE_MAX_REVIEWS)
 
 
 def analyze(
     reviews: list[Review], topic: str = "",
     platform: str = "", period_label: str = "",
 ) -> dict:
-    if anthropic is None:
-        print("ERROR: anthropic package not installed. Run: pip install anthropic")
-        sys.exit(1)
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY not set.")
-        sys.exit(1)
-
+    analyzer = _get_analyzer()
     selected = _prioritize_reviews(reviews)
     review_text = "\n".join(r.compact() for r in selected)
 
-    plat = f" ({platform})" if platform else ""
-    per = f" [{period_label}]" if period_label else ""
-    user_prompt = f"Analyze these {len(selected)} customer reviews{plat}{per}"
-    if topic:
-        user_prompt += f" (focus on: {topic})"
-    user_prompt += f":\n\n{review_text}"
+    provider = os.environ.get("ANALYSIS_PROVIDER", "claude")
+    print(f"  Sending {len(selected)} reviews to {provider} [{platform}/{period_label}]...")
 
-    print(f"  Sending {len(selected)} reviews to Claude [{platform}/{period_label}]...")
+    raw = analyzer.analyze(review_text, platform, period_label, topic, len(selected))
 
-    client = anthropic.Anthropic(api_key=api_key)
-    message = client.messages.create(
-        model=config.CLAUDE_MODEL, max_tokens=config.CLAUDE_MAX_TOKENS,
-        system=_build_system_prompt(platform, period_label),
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-
-    result = _parse_response(message.content[0].text)
+    result = _parse_response(raw)
     print(f"  Analysis [{platform}/{period_label}]: {len(result.get('clusters', []))} clusters")
     return result
 
 
 def _prioritize_reviews(reviews: list[Review]) -> list[Review]:
-    if len(reviews) <= config.CLAUDE_MAX_REVIEWS:
+    max_reviews = _get_max_reviews()
+    if len(reviews) <= max_reviews:
         return reviews
     neg_app, neg_other, neutral, positive = [], [], [], []
     for r in reviews:
@@ -113,7 +65,7 @@ def _prioritize_reviews(reviews: list[Review]) -> list[Review]:
             neutral.append(r)
     selected: list[Review] = []
     for bucket in [neg_app, neg_other, neutral, positive]:
-        remaining = config.CLAUDE_MAX_REVIEWS - len(selected)
+        remaining = max_reviews - len(selected)
         if remaining <= 0:
             break
         selected.extend(bucket[:remaining])

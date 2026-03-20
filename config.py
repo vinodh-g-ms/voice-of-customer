@@ -39,10 +39,19 @@ MSQA_PLATFORM_URLS = {
 }
 MSQA_MAX_PAGES = 5
 
-# ── Claude API ─────────────────────────────────────────────────────
+# ── Analysis Provider ──────────────────────────────────────────────
+# Set ANALYSIS_PROVIDER env var: "claude" (default) or "copilot"
+
+# Claude (Anthropic)
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
-CLAUDE_MAX_REVIEWS = 500
 CLAUDE_MAX_TOKENS = 16384
+CLAUDE_MAX_REVIEWS = 500
+
+# GitHub Copilot (Models API)
+COPILOT_BASE_URL = "https://models.github.ai/inference"
+COPILOT_MODEL = "openai/gpt-4.1"
+COPILOT_MAX_TOKENS = 16384
+COPILOT_MAX_REVIEWS = 100  # GitHub Models has tighter input token limits
 
 # ── Azure DevOps ───────────────────────────────────────────────────
 ADO_ORG_URL = "https://office.visualstudio.com"

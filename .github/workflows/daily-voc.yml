@@ -28,6 +28,8 @@ jobs:
       - name: Run VoC Pipeline
         run: python main.py --platforms ios,mac,android || python error_dashboard.py "$?"
         env:
+          ANALYSIS_PROVIDER: ${{ vars.ANALYSIS_PROVIDER || 'copilot' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SYSTEM_ACCESSTOKEN: ${{ secrets.ADO_PAT }}
 
