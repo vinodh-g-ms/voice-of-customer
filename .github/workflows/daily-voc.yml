@@ -58,6 +58,10 @@ jobs:
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
           SHAREPOINT_DASHBOARD_URL: ${{ vars.SHAREPOINT_DASHBOARD_URL }}
+          ANALYSIS_PROVIDER: ${{ vars.ANALYSIS_PROVIDER || 'copilot' }}
+          GITHUB_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SYSTEM_ACCESSTOKEN: ${{ secrets.ADO_PAT }}
 
       - name: Upload dashboard artifact
         if: always()
