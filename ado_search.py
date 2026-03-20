@@ -1,17 +1,26 @@
-"""Azure DevOps Work Item Search — freshness + area path filtering (v3).
+"""Azure DevOps Work Item Search — v4: synonym-aware, multi-signal relevance.
 
 Supports two auth modes:
   - Local: uses `az rest` (requires `az login`)
   - CI/CD: uses SYSTEM_ACCESSTOKEN env var with direct HTTP requests
+
+Relevance scoring:
+  - Synonym-expanded keyword overlap (topic 40%, summary 15%)
+  - Fuzzy string similarity (15%)
+  - State boost: Active/New +0.1, Resolved 0, Closed -0.05 (20%)
+  - Recency boost: updated within 30d +0.1, 60d +0.05 (10%)
+  - Results capped at top 5 per cluster, min_score 0.25
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import re
 import subprocess
+from collections import Counter
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta, timezone
 
@@ -19,6 +28,64 @@ import requests as http_requests
 
 import config
 from models import TopicCluster, ADOMatch
+
+
+# ── Synonym groups: any word in a group matches any other ──────────────
+# Keep groups TIGHT — only true synonyms, not related concepts
+_SYNONYM_GROUPS = [
+    {"crash", "crashes", "crashing", "crashed"},
+    {"freeze", "freezes", "frozen", "hang", "hangs", "hanging", "unresponsive", "stuck"},
+    {"sync", "syncing", "synchronize", "synchronization", "synced"},
+    {"refresh", "refreshing", "reload", "reloading"},
+    {"login", "signin", "sign-in", "authentication", "auth"},
+    {"notification", "notifications", "alert", "alerts", "notify"},
+    {"reminder", "reminders"},
+    {"calendar", "cal"},
+    {"event", "events", "appointment", "appointments"},
+    {"meeting", "meetings"},
+    {"invite", "invites", "invitation", "invitations"},
+    {"email", "emails", "mail", "mails"},
+    {"message", "messages"},
+    {"inbox", "mailbox"},
+    {"search", "searching", "find", "finding", "lookup"},
+    {"filter", "filtering", "filters"},
+    {"attachment", "attachments", "attach", "attaching"},
+    {"compose", "composing", "draft", "drafts"},
+    {"reply", "replying", "respond", "responding"},
+    {"send", "sending", "sent"},
+    {"load", "loading"},
+    {"render", "rendering", "display", "displaying"},
+    {"open", "opening", "launch", "launching", "startup"},
+    {"slow", "sluggish", "lag", "laggy", "latency"},
+    {"performance", "speed"},
+    {"delay", "delayed", "delays"},
+    {"layout", "alignment"},
+    {"spam", "junk", "phishing"},
+    {"block", "blocking", "blocked"},
+    {"contact", "contacts"},
+    {"battery", "power", "drain", "draining"},
+    {"delete", "deleting", "remove", "removing"},
+    {"disappear", "disappearing", "missing", "lost", "gone", "vanish"},
+    {"signature", "signatures"},
+    {"swipe", "gesture", "gestures"},
+    {"font", "fonts"},
+    {"dark mode", "dark theme"},
+]
+
+# Build lookup: word -> set of all synonyms
+_SYNONYM_MAP: dict[str, set[str]] = {}
+for _group in _SYNONYM_GROUPS:
+    for _word in _group:
+        _SYNONYM_MAP[_word] = _group
+
+# State priority for boosting
+_STATE_BOOST = {
+    "new": 0.10, "active": 0.10, "committed": 0.08,
+    "in progress": 0.08, "resolved": 0.0,
+    "closed": -0.05, "removed": -0.10,
+}
+
+MAX_RESULTS_PER_CLUSTER = 5
 
 
 def correlate_clusters(
@@ -78,6 +145,7 @@ def _get_auth_mode() -> str:
 
 
 def _extract_keywords(topic: str, platform: str = "") -> str:
+    """Extract meaningful keywords with synonym expansion for better ADO search."""
     stop_words = {
         "the", "a", "an", "is", "are", "was", "were", "in", "on", "at",
         "to", "for", "of", "with", "not", "no", "and", "or", "but",
@@ -105,7 +173,6 @@ def _extract_keywords(topic: str, platform: str = "") -> str:
     words = re.findall(r'\b\w+\b', topic.lower())
     keywords = [w for w in words if w not in stop_words and len(w) > 2]
 
-    # Add platform name to improve ADO search relevance
     platform_terms = {"ios": "ios", "mac": "macos", "android": "android"}
     prefix = platform_terms.get(platform, "")
     if prefix:
@@ -114,14 +181,37 @@ def _extract_keywords(topic: str, platform: str = "") -> str:
     return " ".join(keywords[:6])
 
 
+def _expand_with_synonyms(words: set[str]) -> set[str]:
+    """Expand a set of words with their synonyms."""
+    expanded = set(words)
+    for w in words:
+        if w in _SYNONYM_MAP:
+            expanded |= {s for s in _SYNONYM_MAP[w] if " " not in s}
+    return expanded
+
+
+def _idf_weight(word: str, all_bug_titles: list[str]) -> float:
+    """Inverse document frequency: rare words across bug titles score higher."""
+    if not all_bug_titles:
+        return 1.0
+    doc_count = sum(1 for t in all_bug_titles if word in t.lower())
+    if doc_count == 0:
+        return 1.0
+    return math.log(len(all_bug_titles) / doc_count) + 1.0
+
+
 def _rank_by_relevance(
     matches: list[ADOMatch], topic: str, summary: str = "",
-    min_score: float = 0.15,
+    min_score: float = 0.25,
 ) -> list[ADOMatch]:
-    """Score and filter ADO bugs by relevance to the cluster topic.
+    """Score ADO bugs using multi-signal relevance.
 
-    Scoring: keyword overlap between cluster topic/summary and bug title.
-    Title match is primary; summary provides secondary signal.
+    Signals:
+      1. Synonym-aware keyword overlap with topic (40%)
+      2. Synonym-aware keyword overlap with summary (15%)
+      3. Fuzzy string similarity (15%)
+      4. State boost: Active/New > Resolved > Closed (20%)
+      5. Recency boost: recently updated bugs score higher (10%)
     """
     stop = {
         "the", "a", "an", "is", "are", "was", "were", "in", "on", "at",
@@ -135,10 +225,17 @@ def _rank_by_relevance(
 
     topic_kw = _keywords(topic)
     summary_kw = _keywords(summary) if summary else set()
-    # Union of topic + summary keywords gives us the full context
-    all_kw = topic_kw | summary_kw
-    if not all_kw:
+
+    # Expand with synonyms for matching
+    topic_expanded = _expand_with_synonyms(topic_kw)
+    summary_expanded = _expand_with_synonyms(summary_kw) if summary_kw else set()
+
+    if not (topic_kw | summary_kw):
         return matches
+
+    # Collect all bug titles for IDF calculation
+    all_titles = [m.title for m in matches]
+    now = datetime.now(timezone.utc)
 
     scored: list[tuple[float, ADOMatch]] = []
     for m in matches:
@@ -146,18 +243,69 @@ def _rank_by_relevance(
         if not title_kw:
             continue
 
-        # Primary: keyword overlap with topic (0-1)
-        topic_overlap = len(topic_kw & title_kw) / max(len(topic_kw), 1)
-        # Secondary: keyword overlap with summary (0-1), weighted lower
-        summary_overlap = len(summary_kw & title_kw) / max(len(summary_kw), 1) if summary_kw else 0
-        # Fuzzy title similarity as tiebreaker
+        title_expanded = _expand_with_synonyms(title_kw)
+
+        # Signal 1: Topic keyword overlap with synonym expansion (40%)
+        direct_overlap = len(topic_kw & title_kw)
+        synonym_overlap = len(topic_expanded & title_expanded) - direct_overlap
+        # Synonym bonus only applies if there's at least 1 direct match
+        if direct_overlap > 0:
+            weighted_overlap = direct_overlap + (synonym_overlap * 0.4)
+        else:
+            weighted_overlap = synonym_overlap * 0.2  # weak signal without direct match
+        topic_score = min(weighted_overlap / max(len(topic_kw), 1), 1.0)
+
+        # Signal 2: Summary keyword overlap with synonyms (15%)
+        if summary_kw:
+            s_direct = len(summary_kw & title_kw)
+            s_synonym = len(summary_expanded & title_expanded) - s_direct
+            if s_direct > 0:
+                s_weighted = s_direct + (s_synonym * 0.4)
+            else:
+                s_weighted = s_synonym * 0.2
+            summary_score = min(s_weighted / max(len(summary_kw), 1), 1.0)
+        else:
+            summary_score = 0.0
+
+        # Signal 3: Fuzzy string similarity (15%)
         fuzzy = SequenceMatcher(None, topic.lower(), m.title.lower()).ratio()
 
-        score = (topic_overlap * 0.5) + (summary_overlap * 0.2) + (fuzzy * 0.3)
+        # Signal 4: State boost (20%) — normalize to 0-1 range
+        state_val = _STATE_BOOST.get(m.state.lower(), 0.0)
+        state_score = (state_val + 0.10) / 0.20  # maps -0.10..+0.10 to 0..1
+
+        # Signal 5: Recency boost (10%)
+        if m.changed_date:
+            age_days = (now - m.changed_date).days
+            if age_days <= 14:
+                recency_score = 1.0
+            elif age_days <= 30:
+                recency_score = 0.8
+            elif age_days <= 60:
+                recency_score = 0.5
+            else:
+                recency_score = 0.2
+        else:
+            recency_score = 0.3
+
+        score = (
+            topic_score * 0.40
+            + summary_score * 0.15
+            + fuzzy * 0.15
+            + state_score * 0.20
+            + recency_score * 0.10
+        )
+
+        # Content gate: require meaningful topic or summary relevance
+        content_score = topic_score * 0.40 + summary_score * 0.15
+        if content_score < 0.08:
+            continue  # Skip bugs with no meaningful content match
+
         scored.append((score, m))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    return [m for score, m in scored if score >= min_score]
+    # Cap at top N and filter by min_score
+    return [m for score, m in scored[:MAX_RESULTS_PER_CLUSTER] if score >= min_score]
 
 
 def _search_bugs(keywords: str, area_paths: list[str]) -> list[ADOMatch]:
