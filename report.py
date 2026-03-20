@@ -324,7 +324,10 @@ def _cluster_card(c: TopicCluster, idx: int, platform: str, is_first: bool = Fal
           {sparkline}
         </div>"""
 
-    # ADO section
+    # ADO section — link button always shown
+    link_url = f"https://github.com/{GITHUB_REPO}/actions/workflows/link-ado-bug.yml"
+    link_btn = f'<a href="{link_url}" target="_blank" class="create-bug-btn link-bug-btn" title="Link an existing ADO bug to this cluster">🔗 Link Existing ADO Bug</a>'
+
     if c.ado_matches:
         items = ""
         for m in c.ado_matches:
@@ -340,16 +343,14 @@ def _cluster_card(c: TopicCluster, idx: int, platform: str, is_first: bool = Fal
         ado_html = f"""<div class="ado-section">
           <h4>Linked ADO Bugs <span class="ado-count">{len(c.ado_matches)}</span></h4>
           {items}
+          {link_btn}
         </div>"""
     else:
         url = _create_url(c, platform)
-        link_url = (
-            f"https://github.com/{GITHUB_REPO}/actions/workflows/link-ado-bug.yml"
-        )
         ado_html = f"""<div class="ado-section">
           <div class="no-ado">No matching ADO bugs found in this time window</div>
           <a href="{url}" target="_blank" class="create-bug-btn">+ Create ADO Bug</a>
-          <a href="{link_url}" target="_blank" class="link-bug-btn" title="Link an existing ADO bug to this cluster">🔗 Link Existing ADO Bug</a>
+          {link_btn}
         </div>"""
 
     ado_badge = f'<span class="meta-ado">{len(c.ado_matches)} ADO</span>' if c.ado_matches else '<span class="meta-noado">No ADO</span>'
@@ -992,12 +993,7 @@ body {
     transition: all 0.2s;
 }
 .create-bug-btn:hover { background: #d4e8ff; transform: translateY(-1px); }
-.link-bug-btn {
-  display: inline-block; margin: 6px 0 0 8px; padding: 5px 14px;
-  border: 1px solid #e8b931; border-radius: 6px; color: #946b00;
-  text-decoration: none; font-size: 0.82rem; font-weight: 500;
-  background: #fef9e7; transition: all 0.2s;
-}
+.link-bug-btn { background: #fef9e7; border-color: #e8b931; color: #946b00; }
 .link-bug-btn:hover { background: #fdf0c8; transform: translateY(-1px); }
 
 /* ═══ Footer ═══ */

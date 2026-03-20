@@ -72,4 +72,4 @@ jobs:
           gh workflow run "Customer Pulse - Daily VoC" --ref main
           echo "✅ Pipeline triggered — dashboard will update in ~15 minutes"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
