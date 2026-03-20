@@ -247,6 +247,10 @@ def build_adaptive_card(summary: dict, dashboard_url: str) -> dict:
                 "version": "1.4",
                 "body": body,
                 "actions": actions,
+                "selectAction": {
+                    "type": "Action.OpenUrl",
+                    "url": dashboard_url,
+                } if dashboard_url else None,
             },
         }],
     }
