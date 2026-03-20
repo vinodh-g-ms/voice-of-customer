@@ -74,7 +74,19 @@ def _extract_keywords(topic: str, platform: str = "") -> str:
     stop_words = {
         "the", "a", "an", "is", "are", "was", "were", "in", "on", "at",
         "to", "for", "of", "with", "not", "no", "and", "or", "but",
-        "outlook", "app", "issue", "problem", "bug",
+        "outlook", "app", "issue", "problem", "bug", "issues", "problems",
+        "users", "report", "frequently", "constantly", "sometimes", "often",
+        "very", "also", "some", "many", "after", "when", "while", "been",
+        "being", "having", "have", "has", "does", "doesn", "don", "can",
+        "cannot", "could", "would", "should", "may", "might", "will",
+        "just", "like", "get", "gets", "getting", "got", "make", "made",
+        "even", "still", "much", "more", "most", "every", "each", "all",
+        "any", "both", "other", "new", "old", "since", "update", "updated",
+        "become", "becomes", "becoming", "fails", "failed", "unable",
+        "certain", "specific", "particular", "despite", "without",
+        "however", "between", "through", "during", "before",
+        "repeatedly", "extended", "periods", "properly", "correctly",
+        "working", "work", "works", "use", "using", "used",
     }
     if platform == "ios":
         stop_words.update({"mac", "macos", "desktop", "android"})
@@ -85,7 +97,14 @@ def _extract_keywords(topic: str, platform: str = "") -> str:
 
     words = re.findall(r'\b\w+\b', topic.lower())
     keywords = [w for w in words if w not in stop_words and len(w) > 2]
-    return " ".join(keywords[:5])
+
+    # Add platform name to improve ADO search relevance
+    platform_terms = {"ios": "ios", "mac": "macos", "android": "android"}
+    prefix = platform_terms.get(platform, "")
+    if prefix:
+        keywords = [prefix] + keywords
+
+    return " ".join(keywords[:6])
 
 
 def _search_bugs(keywords: str, area_paths: list[str]) -> list[ADOMatch]:
