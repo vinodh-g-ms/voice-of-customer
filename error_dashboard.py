@@ -19,45 +19,85 @@ GITHUB_REPO = "vinodh-g-ms/voice-of-customer"
 def detect_errors() -> list[dict]:
     """Detect which keys/configs are broken based on environment and exit code."""
     errors = []
+    provider = os.environ.get("ANALYSIS_PROVIDER", "copilot").lower()
 
-    # Check Anthropic API key
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        errors.append({
-            "title": "Anthropic API Key Missing",
-            "icon": "\u26d4",
-            "severity": "blocking",
-            "time_to_fix": "~5 minutes",
-            "description": "The Claude AI API key is not set. Without it, the pipeline cannot analyze customer reviews.",
-            "fix": [
-                'Go to <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com/settings/keys</a> and sign in',
-                "Click <strong>Create Key</strong> or copy your existing key",
-                f'Go to <a href="https://github.com/{GITHUB_REPO}/settings/secrets/actions" target="_blank">GitHub Repo &rarr; Settings &rarr; Secrets</a>',
-                'Click <strong>New repository secret</strong> (or update existing)',
-                'Name: <code>ANTHROPIC_API_KEY</code>, paste your key as the value',
-                'Click <strong>Add secret</strong>',
-                f'Go to <a href="https://github.com/{GITHUB_REPO}/actions" target="_blank">Actions tab</a> and click <strong>Run workflow</strong> to retry',
-            ],
-        })
-    elif api_key.startswith("sk-ant-"):
-        errors.append({
-            "title": "Anthropic API Key May Be Invalid",
-            "icon": "\u26a0\ufe0f",
-            "severity": "likely",
-            "time_to_fix": "~5 minutes",
-            "description": "The API key is set but the pipeline still failed. The key may be expired, revoked, or out of credits.",
-            "fix": [
-                'Go to <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com/settings/keys</a>',
-                "Check your key is <strong>Active</strong> (not revoked)",
-                'Check your <a href="https://console.anthropic.com/settings/billing" target="_blank">billing page</a> for available credits',
-                "If needed, create a new key",
-                f'Go to <a href="https://github.com/{GITHUB_REPO}/settings/secrets/actions" target="_blank">GitHub Repo &rarr; Settings &rarr; Secrets</a>',
-                "Update the <code>ANTHROPIC_API_KEY</code> secret with the new key",
-                f'Go to <a href="https://github.com/{GITHUB_REPO}/actions" target="_blank">Actions tab</a> and click <strong>Run workflow</strong>',
-            ],
-        })
+    # ── GitHub Copilot provider checks ──
+    if provider == "copilot":
+        token = os.environ.get("GITHUB_TOKEN", "")
+        if not token:
+            errors.append({
+                "title": "GitHub Token Missing",
+                "icon": "\u26d4",
+                "severity": "blocking",
+                "time_to_fix": "~5 minutes",
+                "description": "The GitHub token is not set. The pipeline uses GitHub Copilot (Models API) for AI analysis and cannot proceed without it.",
+                "fix": [
+                    'Go to <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a> and sign in',
+                    "Click <strong>Generate new token (classic)</strong>",
+                    "Give it a name like <code>VoC-Pipeline</code> and select the <strong>repo</strong> scope",
+                    "Click <strong>Generate token</strong> and <strong>copy the token</strong>",
+                    f'Go to <a href="https://github.com/{GITHUB_REPO}/settings/secrets/actions" target="_blank">GitHub Repo &rarr; Settings &rarr; Secrets</a>',
+                    'Create/update secret named <code>GITHUB_TOKEN</code> with the token',
+                    f'Go to <a href="https://github.com/{GITHUB_REPO}/actions" target="_blank">Actions tab</a> and click <strong>Run workflow</strong> to retry',
+                ],
+            })
+        else:
+            errors.append({
+                "title": "GitHub Token May Be Invalid or Expired",
+                "icon": "\u26a0\ufe0f",
+                "severity": "likely",
+                "time_to_fix": "~5 minutes",
+                "description": "The GitHub token is set but the pipeline still failed. The token may be expired, revoked, or lack the required scopes. GitHub Models API requires a valid token.",
+                "fix": [
+                    'Go to <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a>',
+                    "Check your token is <strong>not expired</strong> and has the <strong>repo</strong> scope",
+                    "If expired or missing: generate a new token (classic) with <strong>repo</strong> scope",
+                    "Copy the new token",
+                    f'Go to <a href="https://github.com/{GITHUB_REPO}/settings/secrets/actions" target="_blank">GitHub Repo &rarr; Settings &rarr; Secrets</a>',
+                    "Update the <code>GITHUB_TOKEN</code> secret with the new token",
+                    f'Go to <a href="https://github.com/{GITHUB_REPO}/actions" target="_blank">Actions tab</a> and click <strong>Run workflow</strong>',
+                ],
+            })
 
-    # Check ADO PAT
+    # ── Claude provider checks ──
+    elif provider == "claude":
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            errors.append({
+                "title": "Anthropic API Key Missing",
+                "icon": "\u26d4",
+                "severity": "blocking",
+                "time_to_fix": "~5 minutes",
+                "description": "The Claude AI API key is not set. The pipeline is configured to use Claude (ANALYSIS_PROVIDER=claude) and cannot analyze reviews without it.",
+                "fix": [
+                    'Go to <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com/settings/keys</a> and sign in',
+                    "Click <strong>Create Key</strong> or copy your existing key",
+                    f'Go to <a href="https://github.com/{GITHUB_REPO}/settings/secrets/actions" target="_blank">GitHub Repo &rarr; Settings &rarr; Secrets</a>',
+                    'Click <strong>New repository secret</strong> (or update existing)',
+                    'Name: <code>ANTHROPIC_API_KEY</code>, paste your key as the value',
+                    'Click <strong>Add secret</strong>',
+                    f'Go to <a href="https://github.com/{GITHUB_REPO}/actions" target="_blank">Actions tab</a> and click <strong>Run workflow</strong> to retry',
+                ],
+            })
+        else:
+            errors.append({
+                "title": "Anthropic API Key May Be Invalid",
+                "icon": "\u26a0\ufe0f",
+                "severity": "likely",
+                "time_to_fix": "~5 minutes",
+                "description": "The API key is set but the pipeline still failed. The key may be expired, revoked, or out of credits.",
+                "fix": [
+                    'Go to <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com/settings/keys</a>',
+                    "Check your key is <strong>Active</strong> (not revoked)",
+                    'Check your <a href="https://console.anthropic.com/settings/billing" target="_blank">billing page</a> for available credits',
+                    "If needed, create a new key",
+                    f'Go to <a href="https://github.com/{GITHUB_REPO}/settings/secrets/actions" target="_blank">GitHub Repo &rarr; Settings &rarr; Secrets</a>',
+                    "Update the <code>ANTHROPIC_API_KEY</code> secret with the new key",
+                    f'Go to <a href="https://github.com/{GITHUB_REPO}/actions" target="_blank">Actions tab</a> and click <strong>Run workflow</strong>',
+                ],
+            })
+
+    # ── ADO PAT checks ──
     ado_pat = os.environ.get("SYSTEM_ACCESSTOKEN", "")
     if not ado_pat:
         errors.append({
@@ -107,7 +147,7 @@ def detect_errors() -> list[dict]:
                 "Click the latest failed workflow run",
                 'Expand the <strong>Run VoC Pipeline</strong> step to see the error message',
                 "Common issues: network timeout, API rate limit, Python import error",
-                'If stuck, <a href="https://github.com/{GITHUB_REPO}/issues/new" target="_blank">create a GitHub Issue</a> with the error text',
+                f'If stuck, <a href="https://github.com/{GITHUB_REPO}/issues/new" target="_blank">create a GitHub Issue</a> with the error text',
             ],
         })
 
@@ -117,15 +157,25 @@ def detect_errors() -> list[dict]:
 def _health_checks() -> list[dict]:
     """Run health checks on all integrations."""
     checks = []
+    provider = os.environ.get("ANALYSIS_PROVIDER", "copilot").lower()
 
-    # Anthropic API Key
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    checks.append({
-        "name": "Claude AI (Anthropic)",
-        "status": "configured" if key else "missing",
-        "required": True,
-        "detail": "API key is set" if key else "ANTHROPIC_API_KEY secret not found",
-    })
+    # AI Provider
+    if provider == "copilot":
+        token = os.environ.get("GITHUB_TOKEN", "")
+        checks.append({
+            "name": "GitHub Copilot (AI Analysis)",
+            "status": "configured" if token else "missing",
+            "required": True,
+            "detail": "GITHUB_TOKEN is set" if token else "GITHUB_TOKEN secret not found &mdash; set ANALYSIS_PROVIDER=claude to use Claude instead",
+        })
+    else:
+        key = os.environ.get("ANTHROPIC_API_KEY", "")
+        checks.append({
+            "name": "Claude AI (Anthropic)",
+            "status": "configured" if key else "missing",
+            "required": True,
+            "detail": "ANTHROPIC_API_KEY is set" if key else "ANTHROPIC_API_KEY secret not found",
+        })
 
     # ADO PAT
     pat = os.environ.get("SYSTEM_ACCESSTOKEN", "")
