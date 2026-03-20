@@ -258,7 +258,7 @@ def build_adaptive_card(summary: dict, dashboard_url: str) -> dict:
 
 def main():
     webhook_url = os.environ.get("TEAMS_WEBHOOK_URL")
-    dashboard_url = os.environ.get("SHAREPOINT_DASHBOARD_URL", DASHBOARD_URL_DEFAULT)
+    dashboard_url = os.environ.get("SHAREPOINT_DASHBOARD_URL") or DASHBOARD_URL_DEFAULT
 
     if not webhook_url:
         print("ERROR: TEAMS_WEBHOOK_URL not set")
