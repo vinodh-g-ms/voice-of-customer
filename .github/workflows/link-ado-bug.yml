@@ -65,3 +65,11 @@ jobs:
           git add manual_links.json
           git commit -m "link: ADO #${{ inputs.ado_id }} → ${{ inputs.cluster_topic }}"
           git push
+
+      - name: Regenerate dashboard
+        run: |
+          echo "Triggering dashboard regeneration..."
+          gh workflow run "Customer Pulse - Daily VoC" --ref main
+          echo "✅ Pipeline triggered — dashboard will update in ~15 minutes"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
