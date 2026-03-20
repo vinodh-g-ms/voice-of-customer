@@ -68,12 +68,15 @@ def fetch(days: int = 90, topic: str = "", platform: str = "ios", use_cache: boo
             print(f"  [warn] Reddit r/{subreddit} ({platform}): {e}")
         if sub_count > 0:
             print(f"  Reddit/r/{subreddit} ({platform}): {sub_count} posts")
+        else:
+            print(f"  Reddit/r/{subreddit} ({platform}): 0 posts")
         time.sleep(config.REDDIT_DELAY)
 
     if all_reviews:
         cache.put(cache_key, date_str, [r.to_dict() for r in all_reviews])
     else:
-        print(f"  [warn] Reddit ({platform}): 0 posts collected")
+        oauth_hint = "" if _is_oauth(session) else " (set REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET for OAuth)"
+        print(f"  [warn] Reddit ({platform}): 0 posts collected{oauth_hint}")
     return all_reviews
 
 
