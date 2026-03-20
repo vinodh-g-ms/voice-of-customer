@@ -23,7 +23,7 @@ def detect_errors() -> list[dict]:
 
     # ── GitHub Copilot provider checks ──
     if provider == "copilot":
-        token = os.environ.get("GITHUB_TOKEN", "")
+        token = os.environ.get("GITHUB_TOKEN", "") or os.environ.get("GH_MODELS_TOKEN", "")
         if not token:
             errors.append({
                 "title": "GitHub Token Missing",
@@ -37,7 +37,7 @@ def detect_errors() -> list[dict]:
                     "Give it a name like <code>VoC-Pipeline</code> and select the <strong>repo</strong> scope",
                     "Click <strong>Generate token</strong> and <strong>copy the token</strong>",
                     f'Go to <a href="https://github.com/{GITHUB_REPO}/settings/secrets/actions" target="_blank">GitHub Repo &rarr; Settings &rarr; Secrets</a>',
-                    'Create/update secret named <code>GITHUB_TOKEN</code> with the token',
+                    'Create/update secret named <code>GH_MODELS_TOKEN</code> with the token',
                     f'Go to <a href="https://github.com/{GITHUB_REPO}/actions" target="_blank">Actions tab</a> and click <strong>Run workflow</strong> to retry',
                 ],
             })
@@ -54,7 +54,7 @@ def detect_errors() -> list[dict]:
                     "If expired or missing: generate a new token (classic) with <strong>repo</strong> scope",
                     "Copy the new token",
                     f'Go to <a href="https://github.com/{GITHUB_REPO}/settings/secrets/actions" target="_blank">GitHub Repo &rarr; Settings &rarr; Secrets</a>',
-                    "Update the <code>GITHUB_TOKEN</code> secret with the new token",
+                    "Update the <code>GH_MODELS_TOKEN</code> secret with the new token",
                     f'Go to <a href="https://github.com/{GITHUB_REPO}/actions" target="_blank">Actions tab</a> and click <strong>Run workflow</strong>',
                 ],
             })
@@ -161,12 +161,12 @@ def _health_checks() -> list[dict]:
 
     # AI Provider
     if provider == "copilot":
-        token = os.environ.get("GITHUB_TOKEN", "")
+        token = os.environ.get("GITHUB_TOKEN", "") or os.environ.get("GH_MODELS_TOKEN", "")
         checks.append({
             "name": "GitHub Copilot (AI Analysis)",
             "status": "configured" if token else "missing",
             "required": True,
-            "detail": "GITHUB_TOKEN is set" if token else "GITHUB_TOKEN secret not found &mdash; set ANALYSIS_PROVIDER=claude to use Claude instead",
+            "detail": "GH_MODELS_TOKEN is set" if token else "GH_MODELS_TOKEN secret not found &mdash; set ANALYSIS_PROVIDER=claude to use Claude instead",
         })
     else:
         key = os.environ.get("ANTHROPIC_API_KEY", "")

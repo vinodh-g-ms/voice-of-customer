@@ -21,9 +21,9 @@ class CopilotAnalyzer(BaseAnalyzer):
         if OpenAI is None:
             print("ERROR: openai package not installed. Run: pip install openai")
             sys.exit(1)
-        token = os.environ.get("GITHUB_TOKEN")
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_MODELS_TOKEN")
         if not token:
-            print("ERROR: GITHUB_TOKEN environment variable not set.")
+            print("ERROR: GITHUB_TOKEN or GH_MODELS_TOKEN environment variable not set.")
             print("  Generate one at: https://github.com/settings/tokens")
             print("  Or run: export GITHUB_TOKEN=$(gh auth token)")
             sys.exit(1)

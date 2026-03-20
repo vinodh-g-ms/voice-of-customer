@@ -130,11 +130,11 @@ def _detect_warnings() -> list[dict]:
         })
 
     # AI provider token (only warn if we detect it may be broken)
-    if provider == "copilot" and not os.environ.get("GITHUB_TOKEN"):
+    if provider == "copilot" and not (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_MODELS_TOKEN")):
         warnings.append({
             "text": "⛔ **GitHub token missing** — AI analysis will fail.",
             "fix_url": f"https://github.com/{GITHUB_REPO}/settings/secrets/actions",
-            "fix_label": "Add GITHUB_TOKEN secret",
+            "fix_label": "Add GH_MODELS_TOKEN secret",
         })
     elif provider == "claude" and not os.environ.get("ANTHROPIC_API_KEY"):
         warnings.append({
