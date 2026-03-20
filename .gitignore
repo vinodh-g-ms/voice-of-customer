@@ -1,21 +1,19 @@
+
+__pycache__/
+.DS_Store
+.env
+.idea/
+.vscode/
+*.pyc
+*.pyo
+# Cache
+# IDE
+# macOS
 # Output directories
-output/
+# Python
+cache/
 output_v1/
 output_v2/
 output_v3/
-
-# Cache
-cache/
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.env
-
-# macOS
-.DS_Store
-
-# IDE
-.vscode/
-.idea/
+output/
+SESSION_CONTEXT.md

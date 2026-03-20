@@ -79,6 +79,70 @@ _STATE_BOOST = {
 }
 
 MAX_RESULTS_PER_CLUSTER = 5
+_MANUAL_LINKS_FILE = os.path.join(os.path.dirname(__file__), "manual_links.json")
+
+
+def _load_manual_links() -> list[dict]:
+    """Load manual links and prune expired entries (>retention_days old)."""
+    if not os.path.exists(_MANUAL_LINKS_FILE):
+        return []
+    try:
+        with open(_MANUAL_LINKS_FILE) as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return []
+
+    retention = data.get("retention_days", 90)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention)
+    original_count = len(data.get("links", []))
+
+    # Prune expired entries
+    active = []
+    for link in data.get("links", []):
+        try:
+            linked_at = datetime.fromisoformat(link["linked_at"].replace("Z", "+00:00"))
+            if linked_at >= cutoff:
+                active.append(link)
+        except (KeyError, ValueError):
+            active.append(link)  # keep entries without valid dates
+
+    # Write back if anything was pruned
+    if len(active) < original_count:
+        data["links"] = active
+        try:
+            with open(_MANUAL_LINKS_FILE, "w") as f:
+                json.dump(data, f, indent=2)
+                f.write("\n")
+            print(f"  Manual links: pruned {original_count - len(active)} expired entries")
+        except IOError:
+            pass
+
+    return active
+
+
+def _get_manual_matches(
+    cluster_topic: str, platform: str, links: list[dict],
+) -> list[ADOMatch]:
+    """Find manual links matching this cluster topic (fuzzy match)."""
+    matches = []
+    topic_lower = cluster_topic.lower()
+    for link in links:
+        if link.get("platform", "") != platform:
+            continue
+        link_topic = link.get("cluster_topic", "").lower()
+        # Exact or high fuzzy match (topics may differ slightly between runs)
+        ratio = SequenceMatcher(None, topic_lower, link_topic).ratio()
+        if ratio >= 0.6:
+            ado_id = link.get("ado_id", 0)
+            if ado_id:
+                matches.append(ADOMatch(
+                    work_item_id=ado_id,
+                    title=f"[Manual link by {link.get('linked_by', 'user')}]",
+                    state="Linked",
+                    url=f"{config.ADO_ORG_URL}/{config.ADO_PROJECT}/_workitems/edit/{ado_id}",
+                    changed_date=None,
+                ))
+    return matches
 
 
 def correlate_clusters(
@@ -88,38 +152,63 @@ def correlate_clusters(
 ) -> list[TopicCluster]:
     """Search ADO for bugs matching each topic cluster.
 
+    Merges manual links (from manual_links.json) with search results.
     Filters by: area path (platform), freshness (max_age_days).
     """
+    # Load user-provided manual links (also prunes expired entries)
+    manual_links = _load_manual_links()
+    if manual_links:
+        print(f"  Manual links: {len(manual_links)} active entries loaded")
+
     auth_mode = _get_auth_mode()
-    if auth_mode == "none":
+    if auth_mode == "none" and not manual_links:
         print("  [warn] ADO: no auth available (az login or SYSTEM_ACCESSTOKEN), skipping")
         return clusters
-    print(f"  ADO auth: {auth_mode}")
+    if auth_mode != "none":
+        print(f"  ADO auth: {auth_mode}")
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
     area_paths = config.ADO_AREA_PATHS.get(platform, [])
 
     for cluster in clusters:
+        # Inject manual links first (pinned by user)
+        pinned = _get_manual_matches(cluster.topic, platform, manual_links)
+        pinned_ids = {m.work_item_id for m in pinned}
+
         keywords = _extract_keywords(cluster.topic, platform)
-        if not keywords:
+        if not keywords and not pinned:
             continue
         try:
-            matches = _search_bugs(keywords, area_paths)
-            # Filter to bugs updated within window
-            fresh = [m for m in matches if m.changed_date is None or m.changed_date >= cutoff]
-            # Relevance filter: only keep bugs whose title is meaningfully related
-            relevant = _rank_by_relevance(fresh, cluster.topic, cluster.summary)
-            cluster.ado_matches = relevant
-            if relevant:
-                dropped = len(fresh) - len(relevant)
-                extra = f" (dropped {dropped} low-relevance)" if dropped else ""
-                print(f"  ADO: '{cluster.topic}' -> {len(relevant)} bugs{extra}")
-            elif fresh:
-                print(f"  ADO: '{cluster.topic}' -> 0 relevant ({len(fresh)} didn't match)")
-            elif matches:
-                print(f"  ADO: '{cluster.topic}' -> 0 fresh ({len(matches)} stale >{max_age_days}d)")
+            if auth_mode != "none" and keywords:
+                matches = _search_bugs(keywords, area_paths)
+                fresh = [m for m in matches if m.changed_date is None or m.changed_date >= cutoff]
+                relevant = _rank_by_relevance(fresh, cluster.topic, cluster.summary)
+                # Remove duplicates (don't repeat manually-linked bugs)
+                relevant = [m for m in relevant if m.work_item_id not in pinned_ids]
+            else:
+                relevant = []
+
+            # Manual links come first, then algorithm-found matches
+            cluster.ado_matches = pinned + relevant
+            total = len(cluster.ado_matches)
+            manual_count = len(pinned)
+
+            if total:
+                parts = []
+                if manual_count:
+                    parts.append(f"{manual_count} pinned")
+                if relevant:
+                    parts.append(f"{len(relevant)} found")
+                print(f"  ADO: '{cluster.topic}' -> {total} bugs ({', '.join(parts)})")
+            elif matches if auth_mode != "none" else False:
+                print(f"  ADO: '{cluster.topic}' -> 0 relevant")
         except Exception as e:
-            print(f"  [warn] ADO failed for '{cluster.topic}': {e}")
+            # Still attach manual links even if search fails
+            if pinned:
+                cluster.ado_matches = pinned
+                print(f"  ADO: '{cluster.topic}' -> {len(pinned)} pinned (search failed: {e})")
+            else:
+                print(f"  [warn] ADO failed for '{cluster.topic}': {e}")
 
     return clusters
 

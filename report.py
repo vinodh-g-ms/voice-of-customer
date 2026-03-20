@@ -343,9 +343,13 @@ def _cluster_card(c: TopicCluster, idx: int, platform: str, is_first: bool = Fal
         </div>"""
     else:
         url = _create_url(c, platform)
+        link_url = (
+            f"https://github.com/{GITHUB_REPO}/actions/workflows/link-ado-bug.yml"
+        )
         ado_html = f"""<div class="ado-section">
           <div class="no-ado">No matching ADO bugs found in this time window</div>
           <a href="{url}" target="_blank" class="create-bug-btn">+ Create ADO Bug</a>
+          <a href="{link_url}" target="_blank" class="link-bug-btn" title="Link an existing ADO bug to this cluster">🔗 Link Existing ADO Bug</a>
         </div>"""
 
     ado_badge = f'<span class="meta-ado">{len(c.ado_matches)} ADO</span>' if c.ado_matches else '<span class="meta-noado">No ADO</span>'
@@ -962,6 +966,7 @@ body {
 .state-new { color: #FF9500; border-color: #fde68a; background: #fff8e1; }
 .state-closed { color: #86868b; background: #f5f5f7; }
 .state-resolved { color: #248A3D; border-color: #bbf7d0; background: #e8fae8; }
+.state-linked { color: #946b00; border-color: #e8b931; background: #fef9e7; }
 .ado-name { color: #86868b; font-size: 13px; }
 .ado-activity { color: #c7c7cc; font-size: 12px; }
 
@@ -987,6 +992,13 @@ body {
     transition: all 0.2s;
 }
 .create-bug-btn:hover { background: #d4e8ff; transform: translateY(-1px); }
+.link-bug-btn {
+  display: inline-block; margin: 6px 0 0 8px; padding: 5px 14px;
+  border: 1px solid #e8b931; border-radius: 6px; color: #946b00;
+  text-decoration: none; font-size: 0.82rem; font-weight: 500;
+  background: #fef9e7; transition: all 0.2s;
+}
+.link-bug-btn:hover { background: #fdf0c8; transform: translateY(-1px); }
 
 /* ═══ Footer ═══ */
 .footer {

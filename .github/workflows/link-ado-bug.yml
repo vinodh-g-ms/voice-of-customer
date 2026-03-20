@@ -1,0 +1,67 @@
+name: Link ADO Bug to Cluster
+
+on:
+  workflow_dispatch:
+    inputs:
+      cluster_topic:
+        description: 'Cluster topic (copy from dashboard)'
+        required: true
+        type: string
+      platform:
+        description: 'Platform'
+        required: true
+        type: choice
+        options:
+          - ios
+          - mac
+          - android
+      ado_id:
+        description: 'ADO Work Item ID (number only)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  link:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add manual link
+        run: |
+          python3 -c "
+          import json, os
+          from datetime import datetime, timezone
+
+          fp = 'manual_links.json'
+          with open(fp) as f:
+              data = json.load(f)
+
+          data['links'].append({
+              'cluster_topic': os.environ['INPUT_TOPIC'],
+              'platform': os.environ['INPUT_PLATFORM'],
+              'ado_id': int(os.environ['INPUT_ADO_ID']),
+              'linked_by': os.environ['GITHUB_ACTOR'],
+              'linked_at': datetime.now(timezone.utc).isoformat(),
+          })
+
+          with open(fp, 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+
+          print(f'Linked ADO #{os.environ[\"INPUT_ADO_ID\"]} to: {os.environ[\"INPUT_TOPIC\"]}')
+          "
+        env:
+          INPUT_TOPIC: ${{ inputs.cluster_topic }}
+          INPUT_PLATFORM: ${{ inputs.platform }}
+          INPUT_ADO_ID: ${{ inputs.ado_id }}
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manual_links.json
+          git commit -m "link: ADO #${{ inputs.ado_id }} → ${{ inputs.cluster_topic }}"
+          git push
