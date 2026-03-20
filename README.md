@@ -1,10 +1,8 @@
 # Voice of Customer — Outlook
 
-An automated AI-powered pipeline that collects customer feedback from multiple sources, analyzes it using Claude AI, correlates findings with Azure DevOps bugs, and publishes a live dashboard — every day at 6 AM UTC.
+An automated AI-powered pipeline that collects customer feedback from multiple sources, analyzes it using pluggable AI providers (GitHub Copilot or Claude), correlates findings with Azure DevOps bugs, and publishes a live dashboard — every day at 6 AM UTC.
 
 **Live Dashboard:** [vinodh-g-ms.github.io/voice-of-customer](https://vinodh-g-ms.github.io/voice-of-customer/)
-
-**FHL26 Submission:** "Voice of Customer - Outlook" — *Changing how we work in the era of AI*
 
 ---
 
@@ -13,7 +11,7 @@ An automated AI-powered pipeline that collects customer feedback from multiple s
 | Step | Action | Details |
 |------|--------|---------|
 | **Fetch** | Collects ~2,900 reviews daily | App Store (iOS + Mac), Google Play (Android), Reddit, Microsoft Q&A |
-| **Analyze** | Claude AI clusters feedback | Sentiment scoring, topic clustering, severity ranking, trend analysis |
+| **Analyze** | AI clusters feedback (Copilot/Claude) | Sentiment scoring, topic clustering, severity ranking, trend analysis |
 | **Correlate** | Links to engineering work | Searches ADO Outlook Mobile project for matching bugs |
 | **Report** | Publishes live dashboard | Self-contained HTML on GitHub Pages + Teams notification |
 
@@ -30,11 +28,32 @@ An automated AI-powered pipeline that collects customer feedback from multiple s
 **Pattern:** Batch ETL Pipeline + Static Site Generation
 
 ```
-Fetch (4 sources) → Analyze (Claude AI) → Correlate (ADO) → Report (HTML + Teams)
+Fetch (4 sources) → Analyze (AI — Copilot/Claude) → Correlate (ADO) → Report (HTML + Teams)
+```
+
+```mermaid
+flowchart LR
+    subgraph Fetch
+        A1[App Store] & A2[Play Store] & A3[Reddit] & A4[MS Q&A]
+    end
+    subgraph Analyze
+        B{Provider}
+        B --> B1[Copilot — default]
+        B --> B2[Claude — alternative]
+    end
+    subgraph Correlate
+        C[ADO Work Items]
+    end
+    subgraph Report
+        D1[HTML Dashboard]
+        D2[Teams Notification]
+    end
+
+    Fetch --> Analyze --> Correlate --> Report
 ```
 
 - **Schedule:** GitHub Actions cron, daily 6 AM UTC
-- **AI Model:** Claude Sonnet 4 (Anthropic API)
+- **AI Providers:** Pluggable — GitHub Copilot via Models API (default) or Claude Sonnet 4 (Anthropic API)
 - **Hosting:** GitHub Pages (static HTML)
 - **Notifications:** Microsoft Teams via Incoming Webhook
 - **Bug Linking:** Azure DevOps Work Item Search API
@@ -47,7 +66,13 @@ Fetch (4 sources) → Analyze (Claude AI) → Correlate (ADO) → Report (HTML +
 # Install dependencies
 pip install -r requirements.txt
 
-# Run full pipeline (requires ANTHROPIC_API_KEY)
+# Run full pipeline (default: Copilot provider, requires GITHUB_TOKEN)
+export GITHUB_TOKEN="ghp_..."
+export ANALYSIS_PROVIDER=copilot
+python main.py
+
+# Or use Claude as the AI provider instead
+export ANALYSIS_PROVIDER=claude
 export ANTHROPIC_API_KEY="sk-ant-..."
 python main.py
 
@@ -94,7 +119,8 @@ The pipeline runs automatically via `.github/workflows/daily-voc.yml`:
 
 | Secret | Purpose | Required? |
 |--------|---------|-----------|
-| `ANTHROPIC_API_KEY` | Claude AI API access | **Yes** |
+| `GITHUB_TOKEN` | GitHub Copilot (Models API) access | **Yes** (default provider) |
+| `ANTHROPIC_API_KEY` | Claude AI API access | Only if `ANALYSIS_PROVIDER=claude` |
 | `ADO_PAT` | Azure DevOps bug search | Optional (expires every 7 days) |
 | `TEAMS_WEBHOOK_URL` | Teams channel notifications | Optional |
 
@@ -111,7 +137,12 @@ If the pipeline fails (usually an expired token), it automatically generates an 
 
 ```
 ├── main.py                 # Pipeline orchestrator
-├── analysis.py             # Claude AI analysis & trend computation
+├── analysis.py             # AI analysis & trend computation (pluggable provider)
+├── analyzers/
+│   ├── __init__.py         # Provider factory (get_analyzer)
+│   ├── base.py             # Abstract base class + shared prompts
+│   ├── claude_analyzer.py  # Anthropic Claude implementation
+│   └── copilot_analyzer.py # GitHub Copilot (Models API) implementation
 ├── report.py               # HTML dashboard & markdown generation
 ├── models.py               # Data classes (Review, TopicCluster, PulseReport)
 ├── config.py               # App IDs, API endpoints, constants
@@ -145,4 +176,4 @@ Common contributions:
 
 ## Owner
 
-**Vinodhswamy** — Outlook iOS Team, FHL26
+**Vinodhswamy** — Outlook Team
