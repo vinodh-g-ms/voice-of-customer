@@ -44,11 +44,14 @@ def fetch(days: int = 90, topic: str = "", platform: str = "ios", use_cache: boo
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     all_reviews: list[Review] = []
 
-    # Try JSON API first, fall back to scraping
+    # Try JSON API first, then scraping, then Arctic Shift archive
     all_reviews = _fetch_via_json_api(days, topic, platform, cutoff)
     if not all_reviews and BeautifulSoup is not None:
         print(f"  Reddit: JSON API returned 0 results, trying web scraping...")
         all_reviews = _fetch_via_scraping(days, topic, platform, cutoff)
+    if not all_reviews:
+        print(f"  Reddit: scraping blocked, trying Arctic Shift archive...")
+        all_reviews = _fetch_via_arctic_shift(days, topic, platform, cutoff)
 
     if all_reviews:
         cache.put(cache_key, date_str, [r.to_dict() for r in all_reviews])
@@ -126,6 +129,65 @@ def _fetch_via_scraping(days: int, topic: str, platform: str, cutoff: datetime) 
         if sub_count > 0:
             print(f"  Reddit/r/{subreddit} ({platform}): {sub_count} posts (scraped)")
         time.sleep(config.REDDIT_DELAY)
+
+    return all_reviews
+
+
+def _fetch_via_arctic_shift(days: int, topic: str, platform: str, cutoff: datetime) -> list[Review]:
+    """Fetch via Arctic Shift public Reddit archive API (works from any IP)."""
+    _ARCTIC_URL = "https://arctic-shift.photon-reddit.com/api/posts/search"
+    after = cutoff.strftime("%Y-%m-%dT%H:%M:%S")
+    all_reviews: list[Review] = []
+
+    # Arctic Shift needs simple keyword queries (no OR syntax)
+    platform_term = {"ios": "ios", "mac": "mac", "android": "android"}.get(platform, "")
+    query_base = f"outlook {platform_term}".strip()
+    if topic:
+        query_base = f"{query_base} {topic}"
+
+    for subreddit in config.REDDIT_SUBREDDITS:
+        sub_count = 0
+        try:
+            resp = requests.get(_ARCTIC_URL, params={
+                "subreddit": subreddit,
+                "query": query_base,
+                "after": after,
+                "limit": config.REDDIT_POSTS_PER_QUERY,
+                "sort": "desc",
+            }, timeout=20, headers={"User-Agent": config.REDDIT_USER_AGENT})
+            if resp.status_code != 200:
+                print(f"  [warn] Arctic Shift r/{subreddit}: HTTP {resp.status_code}")
+                continue
+            posts = resp.json().get("data", [])
+            for p in posts:
+                title = p.get("title", "")
+                if not title:
+                    continue
+                body = p.get("selftext", "")
+                if len(body) > 1000:
+                    body = body[:1000] + "..."
+                date = None
+                created = p.get("created_utc")
+                if created:
+                    try:
+                        date = datetime.fromtimestamp(int(created), tz=timezone.utc)
+                    except (ValueError, TypeError, OSError):
+                        pass
+                if date and date < cutoff:
+                    continue
+                permalink = p.get("permalink", "")
+                url = f"https://www.reddit.com{permalink}" if permalink else ""
+                all_reviews.append(Review(
+                    source="reddit", title=title, body=body, rating=None,
+                    author=p.get("author", "[deleted]"), date=date, url=url,
+                    platform=platform,
+                ))
+                sub_count += 1
+        except requests.RequestException as e:
+            print(f"  [warn] Arctic Shift r/{subreddit}: {e}")
+        if sub_count > 0:
+            print(f"  Reddit/r/{subreddit} ({platform}): {sub_count} posts (archive)")
+        time.sleep(1)
 
     return all_reviews
 
