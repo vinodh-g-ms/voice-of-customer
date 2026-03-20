@@ -1,5 +1,13 @@
 {
-    "version": 1,
-    "retention_days": 90,
-    "links": []
+  "version": 1,
+  "retention_days": 90,
+  "links": [
+    {
+      "cluster_topic": "Crashes and App Not Opening",
+      "platform": "ios",
+      "ado_id": 11319963,
+      "linked_by": "vinodh-g-ms",
+      "linked_at": "2026-03-20T05:27:39.016543+00:00"
+    }
+  ]
 }
