@@ -1,5 +1,7 @@
 """Configuration constants for Customer Pulse v3."""
 
+import os
+
 # ── App Store (iOS + Mac) ─────────────────────────────────────────
 APPSTORE_PLATFORMS = {
     "ios": {"app_id": "951937596", "name": "Microsoft Outlook for iOS"},
@@ -49,9 +51,9 @@ CLAUDE_MAX_REVIEWS = 500
 
 # GitHub Copilot (Models API)
 COPILOT_BASE_URL = "https://models.github.ai/inference"
-COPILOT_MODEL = "openai/gpt-4.1"
+COPILOT_MODEL = os.environ.get("COPILOT_MODEL") or "openai/gpt-4.1"
 COPILOT_MAX_TOKENS = 16384
-COPILOT_MAX_REVIEWS = 100  # GitHub Models has tighter input token limits
+COPILOT_MAX_REVIEWS = int(os.environ.get("COPILOT_MAX_REVIEWS") or 100)
 
 # ── Azure DevOps ───────────────────────────────────────────────────
 ADO_ORG_URL = "https://office.visualstudio.com"

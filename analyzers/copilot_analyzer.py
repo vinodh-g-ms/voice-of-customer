@@ -33,12 +33,20 @@ class CopilotAnalyzer(BaseAnalyzer):
         )
 
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
+        # Newer models (gpt-5, o-series) require max_completion_tokens
+        model = config.COPILOT_MODEL
+        needs_new_param = any(k in model for k in ["gpt-5", "/o1", "/o3", "/o4"])
+        token_kwarg = (
+            {"max_completion_tokens": config.COPILOT_MAX_TOKENS}
+            if needs_new_param
+            else {"max_tokens": config.COPILOT_MAX_TOKENS}
+        )
         response = self._client.chat.completions.create(
-            model=config.COPILOT_MODEL,
-            max_tokens=config.COPILOT_MAX_TOKENS,
+            model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
+            **token_kwarg,
         )
         return response.choices[0].message.content

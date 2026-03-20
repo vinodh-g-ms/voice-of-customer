@@ -32,6 +32,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SYSTEM_ACCESSTOKEN: ${{ secrets.ADO_PAT }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
 
       - name: Upload to SharePoint
         run: |
