@@ -433,7 +433,15 @@ def _health_section(comp: CompositePulseReport) -> str:
     elif os.environ.get("SYSTEM_ACCESSTOKEN"):
         checks.append('<div class="health-item health-warn"><span class="health-dot dot-warn"></span>ADO Bug Linking<span class="health-val">No matches</span></div>')
     else:
-        checks.append('<div class="health-item health-skip"><span class="health-dot dot-skip"></span>ADO Bug Linking<span class="health-val">Not configured</span></div>')
+        checks.append(
+            '<div class="health-item health-warn"><span class="health-dot dot-warn"></span>ADO Bug Linking'
+            '<span class="health-val">Token missing &mdash; '
+            '<a href="https://office.visualstudio.com/_usersSettings/tokens" target="_blank" '
+            'style="color:#FF9500;text-decoration:underline;">Create PAT</a> &rarr; '
+            f'<a href="https://github.com/{GITHUB_REPO}/settings/secrets/actions" target="_blank" '
+            'style="color:#FF9500;text-decoration:underline;">Add as ADO_PAT secret</a>'
+            '</span></div>'
+        )
 
     # AI Analysis (always working if we got here)
     provider = os.environ.get("ANALYSIS_PROVIDER", "copilot").capitalize()

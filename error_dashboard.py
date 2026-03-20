@@ -181,18 +181,18 @@ def _health_checks() -> list[dict]:
     pat = os.environ.get("SYSTEM_ACCESSTOKEN", "")
     checks.append({
         "name": "Azure DevOps (Bug Linking)",
-        "status": "configured" if pat else "not configured",
-        "required": False,
-        "detail": "PAT is set (expires every 7 days)" if pat else "ADO_PAT secret not found &mdash; bug linking will be skipped",
+        "status": "configured" if pat else "missing",
+        "required": True,
+        "detail": "PAT is set (expires every 7 days)" if pat else "ADO_PAT secret not found &mdash; bug linking will not work",
     })
 
     # Teams Webhook
     teams = os.environ.get("TEAMS_WEBHOOK_URL", "")
     checks.append({
         "name": "Microsoft Teams Notifications",
-        "status": "configured" if teams else "not configured",
-        "required": False,
-        "detail": "Webhook URL is set" if teams else "TEAMS_WEBHOOK_URL secret not found &mdash; Teams alerts will be skipped",
+        "status": "configured" if teams else "missing",
+        "required": True,
+        "detail": "Webhook URL is set" if teams else "TEAMS_WEBHOOK_URL secret not found &mdash; team will not get notified",
     })
 
     # SharePoint
@@ -282,10 +282,22 @@ def generate_error_html(errors: list[dict], checks: list[dict]) -> str:
         padding: 64px 20px 48px;
     }}
     .hero h1 {{
-        font-size: 40px; font-weight: 700;
-        background: linear-gradient(135deg, #FF9500, #FF3B30);
+        font-size: 48px; font-weight: 700;
+        background: linear-gradient(135deg, #f5f5f7, #a1a1a6);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        margin-bottom: 8px;
+        margin-bottom: 4px; letter-spacing: -0.02em;
+    }}
+    .hero .eyebrow {{
+        font-size: 14px; font-weight: 600; color: #a1a1a6;
+        text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;
+    }}
+    .hero .sub-title {{
+        font-size: 22px; color: #a1a1a6; font-weight: 400; margin-bottom: 16px;
+    }}
+    .hero .status-badge {{
+        display: inline-block; background: rgba(255,149,0,0.15); color: #FF9500;
+        padding: 8px 20px; border-radius: 20px; font-size: 15px; font-weight: 600;
+        border: 1px solid rgba(255,149,0,0.3); margin-bottom: 12px;
     }}
     .hero .sub {{ color: #a1a1a6; font-size: 17px; }}
     .hero .timestamp {{ color: #6e6e73; font-size: 14px; margin-top: 12px; }}
@@ -454,7 +466,10 @@ def generate_error_html(errors: list[dict], checks: list[dict]) -> str:
 <body>
 
 <div class="hero">
-    <h1>Pipeline Needs Attention</h1>
+    <p class="eyebrow">Outlook Customer Intelligence</p>
+    <h1>Voice of Customer</h1>
+    <p class="sub-title">For Outlook</p>
+    <p class="status-badge">&#x26a0;&#xfe0f; Pipeline Needs Attention</p>
     <p class="sub">Customer Pulse encountered an issue. Here's what happened and how to fix it.</p>
     <p class="timestamp">{now}</p>
 </div>
