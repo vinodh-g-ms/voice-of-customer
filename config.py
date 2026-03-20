@@ -40,9 +40,9 @@ MSQA_PLATFORM_URLS = {
 MSQA_MAX_PAGES = 5
 
 # ── Claude API ─────────────────────────────────────────────────────
-CLAUDE_MODEL = "claude-sonnet-4-6-20250514"
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 CLAUDE_MAX_REVIEWS = 500
-CLAUDE_MAX_TOKENS = 4096
+CLAUDE_MAX_TOKENS = 16384
 
 # ── Azure DevOps ───────────────────────────────────────────────────
 ADO_ORG_URL = "https://office.visualstudio.com"
