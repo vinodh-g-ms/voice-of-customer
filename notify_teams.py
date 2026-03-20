@@ -163,8 +163,8 @@ def build_adaptive_card(summary: dict, dashboard_url: str) -> dict:
                 {
                     "type": "Column", "width": "stretch",
                     "items": [
-                        {"type": "TextBlock", "text": "Voice of Customer", "size": "Large",
-                         "weight": "Bolder", "wrap": True, "spacing": "None"},
+                        {"type": "TextBlock", "text": f"[Voice of Customer]({dashboard_url})" if dashboard_url else "Voice of Customer",
+                         "size": "Large", "weight": "Bolder", "wrap": True, "spacing": "None"},
                         {"type": "TextBlock", "text": "Outlook Customer Intelligence — Daily Report",
                          "size": "Small", "isSubtle": True, "spacing": "None"},
                     ],
