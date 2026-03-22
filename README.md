@@ -110,6 +110,54 @@ python main.py
 
 In GitHub Actions, set the `ANALYSIS_PROVIDER` repository variable at [Settings → Variables → Actions](https://github.com/vinodh-g-ms/voice-of-customer/settings/variables/actions).
 
+## Data Sources — How Reviews Are Fetched
+
+### App Store (iOS + macOS)
+
+| Setting | Value |
+|---------|-------|
+| **Method** | Apple iTunes RSS JSON feed (public, no auth) |
+| **Endpoint** | `https://itunes.apple.com/{country}/rss/customerreviews/id={app_id}/sortBy=mostRecent/page={page}/json` |
+| **App IDs** | iOS: `951937596`, macOS: `985367838` |
+| **Countries** | US, GB, AU, CA, IN |
+| **Pages** | Up to 10 per country (50 reviews/page) |
+| **Rate Limit** | 1.1s delay between requests |
+
+### Google Play Store (Android)
+
+| Setting | Value |
+|---------|-------|
+| **Method** | `google-play-scraper` Python library (scrapes Play Store) |
+| **App ID** | `com.microsoft.office.outlook` |
+| **Countries** | US, GB, AU, CA, IN |
+| **Reviews/Country** | 200 |
+| **Auth** | None required |
+
+### Reddit
+
+Reddit blocks datacenter IPs, so the pipeline uses a **3-level fallback chain**:
+
+| Priority | Method | Endpoint | Auth |
+|----------|--------|----------|------|
+| 1st | JSON API | `https://www.reddit.com/r/{sub}/search.json` | None (User-Agent only) |
+| 2nd | Web scraping | `https://old.reddit.com/r/{sub}/search` (parsed with BeautifulSoup) | None |
+| 3rd | Arctic Shift archive | `https://arctic-shift.photon-reddit.com/api/posts/search` | None |
+
+- **Subreddits:** r/Outlook, r/microsoft365, r/Office365
+- **Queries:** Platform-specific (e.g., `outlook ios OR outlook iphone OR outlook mobile`)
+- **Rate Limit:** 6s delay between subreddits
+- In CI (GitHub Actions), the JSON API and scraping both return 403 — Arctic Shift is what actually works
+
+### Microsoft Q&A
+
+| Setting | Value |
+|---------|-------|
+| **Method** | Web scraping with BeautifulSoup (HTML parsing) |
+| **Endpoint** | `https://learn.microsoft.com/en-us/answers/tags/456/outlook-mobile?page={n}&orderby=newest` |
+| **Pages** | Up to 5 pages |
+| **Auth** | None required |
+| **Rate Limit** | 1.5s delay between pages |
+
 ## Quick Start
 
 ### Run Locally
