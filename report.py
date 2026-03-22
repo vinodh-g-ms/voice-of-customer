@@ -324,9 +324,11 @@ def _cluster_card(c: TopicCluster, idx: int, platform: str, is_first: bool = Fal
           {sparkline}
         </div>"""
 
-    # ADO section — link button always shown
+    # ADO section — link button copies topic to clipboard, then opens workflow
     link_url = f"https://github.com/{GITHUB_REPO}/actions/workflows/link-ado-bug.yml"
-    link_btn = f'<a href="{link_url}" target="_blank" class="create-bug-btn link-bug-btn" title="Link an existing ADO bug to this cluster">🔗 Link Existing ADO Bug</a>'
+    escaped_topic = _e(c.topic).replace("'", "\\'").replace('"', '&quot;')
+    link_onclick = f"navigator.clipboard.writeText('{escaped_topic}');alert('Cluster topic copied to clipboard!\\n\\nPlatform: {platform}\\n\\nPaste it in the workflow form.');window.open('{link_url}','_blank');return false;"
+    link_btn = f'<a href="{link_url}" onclick="{link_onclick}" class="create-bug-btn link-bug-btn" title="Copies topic to clipboard, then opens the linking workflow">🔗 Link Existing ADO Bug</a>'
 
     if c.ado_matches:
         items = ""

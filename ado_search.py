@@ -120,29 +120,63 @@ def _load_manual_links() -> list[dict]:
     return active
 
 
+_MATCH_STOP_WORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "in", "on", "at",
+    "to", "for", "of", "with", "not", "no", "and", "or", "but",
+    "app", "outlook", "issue", "issues", "problem", "problems",
+    "users", "report", "after", "when", "new", "has", "have",
+}
+
+
 def _get_manual_matches(
     cluster_topic: str, platform: str, links: list[dict],
 ) -> list[ADOMatch]:
-    """Find manual links matching this cluster topic (fuzzy match)."""
+    """Find manual links matching this cluster topic (fuzzy + keyword match)."""
     matches = []
     topic_lower = cluster_topic.lower()
+    topic_words = set(re.findall(r'\b[a-z]{3,}\b', topic_lower)) - _MATCH_STOP_WORDS
+
     for link in links:
         if link.get("platform", "") != platform:
             continue
         link_topic = link.get("cluster_topic", "").lower()
-        # Exact or high fuzzy match (topics may differ slightly between runs)
-        ratio = SequenceMatcher(None, topic_lower, link_topic).ratio()
-        if ratio >= 0.6:
+        link_words = set(re.findall(r'\b[a-z]{3,}\b', link_topic)) - _MATCH_STOP_WORDS
+
+        # Match via SequenceMatcher OR keyword overlap
+        seq_ratio = SequenceMatcher(None, topic_lower, link_topic).ratio()
+        keyword_overlap = len(topic_words & link_words) / max(len(link_words), 1) if link_words else 0
+
+        if seq_ratio >= 0.45 or keyword_overlap >= 0.4:
             ado_id = link.get("ado_id", 0)
             if ado_id:
                 matches.append(ADOMatch(
                     work_item_id=ado_id,
-                    title=f"[Manual link by {link.get('linked_by', 'user')}]",
+                    title=f"[Pinned by {link.get('linked_by', 'user')}]",
                     state="Linked",
                     url=f"{config.ADO_ORG_URL}/{config.ADO_PROJECT}/_workitems/edit/{ado_id}",
                     changed_date=None,
                 ))
     return matches
+
+
+def _resolve_manual_titles(matches: list[ADOMatch], auth_mode: str) -> None:
+    """Fetch real titles from ADO for manually linked bugs."""
+    if auth_mode == "none" or not matches:
+        return
+    for m in matches:
+        if not m.title.startswith("[Pinned"):
+            continue
+        try:
+            result = _search_bugs(str(m.work_item_id), [])
+            for r in result:
+                if r.work_item_id == m.work_item_id:
+                    m.title = r.title
+                    m.state = r.state
+                    m.assigned_to = r.assigned_to
+                    m.changed_date = r.changed_date
+                    break
+        except Exception:
+            pass  # keep the "[Pinned by ...]" title
 
 
 def correlate_clusters(
@@ -171,8 +205,9 @@ def correlate_clusters(
     area_paths = config.ADO_AREA_PATHS.get(platform, [])
 
     for cluster in clusters:
-        # Inject manual links first (pinned by user)
+        # Inject manual links first (pinned by user), resolve real titles
         pinned = _get_manual_matches(cluster.topic, platform, manual_links)
+        _resolve_manual_titles(pinned, auth_mode)
         pinned_ids = {m.work_item_id for m in pinned}
 
         keywords = _extract_keywords(cluster.topic, platform)
