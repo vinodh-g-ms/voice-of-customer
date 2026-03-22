@@ -40,8 +40,9 @@ jobs:
             if python main.py --platforms ios,mac,android --no-cache; then
               echo "pipeline_status=success_after_retry" >> "$GITHUB_OUTPUT"
             else
+              exit_code=$?
               echo "pipeline_status=failed" >> "$GITHUB_OUTPUT"
-              python error_dashboard.py "1"
+              python error_dashboard.py "$exit_code"
             fi
           fi
         env:

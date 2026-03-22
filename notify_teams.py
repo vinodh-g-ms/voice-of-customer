@@ -183,13 +183,10 @@ def build_adaptive_card(summary: dict, dashboard_url: str) -> dict:
     warnings = _detect_warnings()
     pipeline = _get_pipeline_status()
 
-    # Determine status line
-    if pipeline["failed"]:
-        status_value = f"{pipeline['icon']} {pipeline['text']}"
-    elif warnings:
-        status_value = "⚠️ Completed with warnings"
-    else:
-        status_value = f"{pipeline['icon']} {pipeline['text']}"
+    # Determine status line — combine pipeline status with warnings
+    status_value = f"{pipeline['icon']} {pipeline['text']}"
+    if warnings and not pipeline["failed"]:
+        status_value += " (with warnings)"
 
     body = [
         # Header

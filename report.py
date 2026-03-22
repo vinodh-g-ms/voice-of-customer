@@ -325,10 +325,10 @@ def _cluster_card(c: TopicCluster, idx: int, platform: str, is_first: bool = Fal
         </div>"""
 
     # ADO section — link button copies topic to clipboard, then opens workflow
+    import json as _json
     link_url = f"https://github.com/{GITHUB_REPO}/actions/workflows/link-ado-bug.yml"
-    escaped_topic = _e(c.topic).replace("'", "\\'").replace('"', '&quot;')
-    link_onclick = f"navigator.clipboard.writeText('{escaped_topic}');alert('Cluster topic copied to clipboard!\\n\\nPlatform: {platform}\\n\\nPaste it in the workflow form.');window.open('{link_url}','_blank');return false;"
-    link_btn = f'<a href="{link_url}" onclick="{link_onclick}" class="create-bug-btn link-bug-btn" title="Copies topic to clipboard, then opens the linking workflow">🔗 Link Existing ADO Bug</a>'
+    topic_json = _e(_json.dumps(c.topic))  # JSON-encode then HTML-escape for safe data attribute
+    link_btn = f'<a href="{link_url}" target="_blank" class="create-bug-btn link-bug-btn link-ado-btn" data-topic={topic_json} data-platform="{platform}" title="Copies topic to clipboard, then opens the linking workflow">🔗 Link Existing ADO Bug</a>'
 
     if c.ado_matches:
         items = ""
@@ -1180,6 +1180,19 @@ document.querySelectorAll('.seg-btn').forEach(function(btn) {
         btn.classList.add('active');
         var pane = document.getElementById('seg-' + btn.dataset.seg);
         if (pane) pane.classList.add('active');
+    });
+});
+
+// ═══ Link ADO Bug — copy topic to clipboard ═══
+document.querySelectorAll('.link-ado-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        var topic = btn.getAttribute('data-topic');
+        var platform = btn.getAttribute('data-platform');
+        navigator.clipboard.writeText(topic).then(function() {
+            alert('Cluster topic copied to clipboard!\\n\\nPlatform: ' + platform + '\\n\\nPaste it in the workflow form.');
+            window.open(btn.href, '_blank');
+        });
     });
 });
 
