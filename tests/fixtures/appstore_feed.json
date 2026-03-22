@@ -1,0 +1,33 @@
+{
+  "feed": {
+    "entry": [
+      {
+        "title": {"label": "Crashes constantly"},
+        "content": [{"label": "The app crashes every time I open calendar. Very frustrating."}],
+        "im:rating": {"label": "1"},
+        "im:version": {"label": "4.2501.0"},
+        "author": {"name": {"label": "angryuser1"}},
+        "updated": {"label": "2026-03-18T10:00:00+00:00"},
+        "id": {"label": "review-id-1"}
+      },
+      {
+        "title": {"label": "Love the new design"},
+        "content": [{"label": "Much better than before, the focused inbox is great."}],
+        "im:rating": {"label": "5"},
+        "im:version": {"label": "4.2501.0"},
+        "author": {"name": {"label": "happyuser"}},
+        "updated": {"label": "2026-03-17T08:30:00+00:00"},
+        "id": {"label": "review-id-2"}
+      },
+      {
+        "title": {"label": "Sync issues"},
+        "content": [{"label": "Calendar events keep disappearing after sync."}],
+        "im:rating": {"label": "2"},
+        "im:version": {"label": "4.2412.1"},
+        "author": {"name": {"label": "syncuser"}},
+        "updated": {"label": "2026-03-16T12:00:00+00:00"},
+        "id": {"label": "review-id-3"}
+      }
+    ]
+  }
+}

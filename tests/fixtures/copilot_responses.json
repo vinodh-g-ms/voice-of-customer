@@ -1,0 +1,13 @@
+{
+  "output": [
+    {
+      "type": "message",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\"overall_sentiment\": -0.3, \"overall_summary\": \"Mixed feedback.\", \"clusters\": [{\"topic\": \"Calendar sync\", \"severity\": \"high\", \"count\": 10, \"sentiment_score\": -0.7, \"summary\": \"Sync issues.\", \"quotes\": [\"won't sync\"], \"source_breakdown\": {\"appstore\": 7, \"reddit\": 3}}]}"
+        }
+      ]
+    }
+  ]
+}

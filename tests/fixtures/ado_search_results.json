@@ -1,0 +1,31 @@
+{
+  "results": [
+    {
+      "fields": {
+        "system.id": "11111",
+        "system.title": "Calendar sync fails after iOS 18 update",
+        "system.state": "Active",
+        "system.assignedto": "dev1@microsoft.com",
+        "system.changeddate": "2026-03-20T10:00:00Z"
+      }
+    },
+    {
+      "fields": {
+        "system.id": "22222",
+        "system.title": "Calendar events missing on first sync",
+        "system.state": "New",
+        "system.assignedto": "dev2@microsoft.com",
+        "system.changeddate": "2026-03-19T08:00:00Z"
+      }
+    },
+    {
+      "fields": {
+        "system.id": "33333",
+        "system.title": "Outlook crashes when opening shared calendar",
+        "system.state": "Resolved",
+        "system.assignedto": "dev3@microsoft.com",
+        "system.changeddate": "2026-02-15T12:00:00Z"
+      }
+    }
+  ]
+}

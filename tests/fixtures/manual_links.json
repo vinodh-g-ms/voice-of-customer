@@ -1,0 +1,19 @@
+{
+  "retention_days": 90,
+  "links": [
+    {
+      "cluster_topic": "Calendar sync failures",
+      "ado_id": 99999,
+      "platform": "ios",
+      "linked_by": "testuser",
+      "linked_at": "2026-03-01T00:00:00Z"
+    },
+    {
+      "cluster_topic": "App crashes on launch",
+      "ado_id": 88888,
+      "platform": "ios",
+      "linked_by": "testuser",
+      "linked_at": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
