@@ -52,11 +52,63 @@ flowchart LR
     Fetch --> Analyze --> Correlate --> Report
 ```
 
-- **Schedule:** GitHub Actions cron, daily 6 AM UTC
-- **AI Providers:** Pluggable — GitHub Copilot via Models API (default) or Claude Sonnet 4 (Anthropic API)
+- **Schedule:** GitHub Actions cron, daily 6 AM UTC (with automatic retry on failure)
+- **AI Providers:** Pluggable — GitHub Copilot (default) or Claude (Anthropic API)
 - **Hosting:** GitHub Pages (static HTML)
-- **Notifications:** Microsoft Teams via Incoming Webhook
-- **Bug Linking:** Azure DevOps Work Item Search API
+- **Notifications:** Microsoft Teams via Incoming Webhook (failure-aware)
+- **Bug Linking:** Azure DevOps Work Item Search API + manual linking via `manual_links.json`
+
+## AI Analysis Providers
+
+The pipeline supports two AI providers for the analysis phase. Set the `ANALYSIS_PROVIDER` env var (or GitHub Actions variable) to switch.
+
+### GitHub Copilot (Default)
+
+| Setting | Value |
+|---------|-------|
+| **Provider** | `ANALYSIS_PROVIDER=copilot` |
+| **Model** | `gpt-5.4` (GPT-5.4 by OpenAI) |
+| **API Endpoint** | `https://api.githubcopilot.com/responses` |
+| **Auth** | `GITHUB_TOKEN` or `GH_MODELS_TOKEN` (Bearer token) |
+| **Context Window** | 400K tokens |
+| **Max Output** | 128K tokens |
+| **Max Reviews/Batch** | 500 |
+
+GPT-5.4 uses the OpenAI **Responses API** (`/responses`), not the Chat Completions API. The pipeline detects `gpt-5.x` models and automatically uses the correct endpoint format.
+
+**Available models** (configurable via `COPILOT_MODEL` env var):
+- `gpt-5.4` — most capable (default)
+- `gpt-5.4-mini` — fast + capable, lower cost
+- `gpt-4.1` — previous gen (uses `/chat/completions` via `models.inference.ai.azure.com`)
+
+### Claude (Alternative)
+
+| Setting | Value |
+|---------|-------|
+| **Provider** | `ANALYSIS_PROVIDER=claude` |
+| **Model** | `claude-haiku-4-5-20251001` (Claude Haiku 4.5) |
+| **API Endpoint** | `https://api.anthropic.com/v1/messages` |
+| **Auth** | `ANTHROPIC_API_KEY` (x-api-key header) |
+| **Context Window** | 200K tokens |
+| **Max Output** | 64K tokens |
+| **Max Reviews/Batch** | 500 |
+
+Uses the Anthropic **Messages API**. Upgrade to `claude-sonnet-4-20250514` or `claude-opus-4-20250514` if your API key has access to higher tiers.
+
+### Switching Providers
+
+```bash
+# Local: use Copilot (default)
+export GITHUB_TOKEN=$(gh auth token)
+python main.py
+
+# Local: use Claude
+export ANALYSIS_PROVIDER=claude
+export ANTHROPIC_API_KEY="sk-ant-..."
+python main.py
+```
+
+In GitHub Actions, set the `ANALYSIS_PROVIDER` repository variable at [Settings → Variables → Actions](https://github.com/vinodh-g-ms/voice-of-customer/settings/variables/actions).
 
 ## Quick Start
 
@@ -110,10 +162,19 @@ output_v3/
 The pipeline runs automatically via `.github/workflows/daily-voc.yml`:
 
 1. **Install dependencies** — Python 3.11 + pip
-2. **Run VoC Pipeline** — `main.py` (falls back to error dashboard on failure)
-3. **Send Teams Notification** — Adaptive Card with summary
+2. **Run VoC Pipeline** — with automatic retry (5-min delay + `--no-cache` on second attempt)
+3. **Send Teams Notification** — failure-aware Adaptive Card (shows retry status, failure details, re-run button)
 4. **Upload Artifact** — Saves output for 30 days
 5. **Deploy to GitHub Pages** — Pushes dashboard to `gh-pages` branch
+
+### Retry Mechanism
+
+If the pipeline fails on the first attempt (e.g., transient API error), it:
+1. Waits **5 minutes** for the issue to resolve
+2. Retries with `--no-cache` (fresh data)
+3. Only deploys the error dashboard if **both attempts fail**
+
+Teams notification reflects the actual outcome: `success`, `succeeded after retry`, or `failed` (with a "Re-run Pipeline" button).
 
 ### Required Secrets
 
@@ -125,6 +186,22 @@ The pipeline runs automatically via `.github/workflows/daily-voc.yml`:
 | `TEAMS_WEBHOOK_URL` | Teams channel notifications | Optional |
 
 Configure at: [Settings → Secrets → Actions](https://github.com/vinodh-g-ms/voice-of-customer/settings/secrets/actions)
+
+### Manual ADO Bug Linking
+
+You can manually link ADO bugs to dashboard clusters. These links persist across pipeline runs even when Claude/GPT generates slightly different topic names.
+
+**How to link a bug:**
+1. Click **"Link Existing ADO Bug"** on any cluster card in the dashboard
+2. The cluster topic is copied to your clipboard
+3. The GitHub Actions workflow form opens — paste the topic, select platform, enter the ADO bug ID
+4. The workflow commits to `manual_links.json` and triggers a dashboard refresh
+
+**How it works internally:**
+- Links are stored in `manual_links.json` in the repo
+- During correlation, the pipeline fuzzy-matches stored topics to current clusters (keyword overlap + sequence similarity)
+- Linked bugs show as "pinned" at the top of the ADO section with real title, state, and assignee fetched from ADO
+- Links auto-expire after 90 days (configurable via `retention_days` in `manual_links.json`)
 
 ### When Something Breaks
 
@@ -141,25 +218,27 @@ If the pipeline fails (usually an expired token), it automatically generates an 
 ├── analyzers/
 │   ├── __init__.py         # Provider factory (get_analyzer)
 │   ├── base.py             # Abstract base class + shared prompts
-│   ├── claude_analyzer.py  # Anthropic Claude implementation
-│   └── copilot_analyzer.py # GitHub Copilot (Models API) implementation
+│   ├── claude_analyzer.py  # Anthropic Claude implementation (Messages API)
+│   └── copilot_analyzer.py # GitHub Copilot implementation (Responses API + Chat Completions)
 ├── report.py               # HTML dashboard & markdown generation
 ├── models.py               # Data classes (Review, TopicCluster, PulseReport)
-├── config.py               # App IDs, API endpoints, constants
+├── config.py               # App IDs, API endpoints, model config, constants
 ├── cache.py                # 12-hour TTL file cache
-├── ado_search.py           # Azure DevOps Work Item Search
+├── ado_search.py           # Azure DevOps Work Item Search + manual link matching
+├── manual_links.json       # User-pinned ADO bug links (persists across runs)
 ├── error_dashboard.py      # Error page generator (self-healing UX)
-├── notify_teams.py         # Teams webhook notification
+├── notify_teams.py         # Teams webhook notification (failure-aware)
 ├── upload_to_sharepoint.py # SharePoint upload (optional)
 ├── requirements.txt        # Python dependencies
 ├── sources/
 │   ├── appstore.py         # Apple App Store RSS feed
 │   ├── playstore.py        # Google Play Store scraper
-│   ├── reddit.py           # Reddit search API
+│   ├── reddit.py           # Reddit (JSON API → scraping → Arctic Shift archive)
 │   └── msqa.py             # Microsoft Q&A scraper
 └── .github/
     └── workflows/
-        └── daily-voc.yml   # GitHub Actions daily pipeline
+        ├── daily-voc.yml       # Daily pipeline (with retry)
+        └── link-ado-bug.yml    # Manual ADO bug linking workflow
 ```
 
 ## Contributing
