@@ -25,8 +25,25 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run VoC Pipeline
-        run: python main.py --platforms ios,mac,android || python error_dashboard.py "$?"
+      - name: Run VoC Pipeline (with retry)
+        id: pipeline
+        run: |
+          # Attempt 1
+          if python main.py --platforms ios,mac,android; then
+            echo "pipeline_status=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Pipeline failed on first attempt, retrying in 5 minutes..."
+            echo "first_error=$(date -u '+%H:%M UTC')" >> "$GITHUB_OUTPUT"
+            sleep 300
+
+            # Attempt 2 (fresh data, no cache)
+            if python main.py --platforms ios,mac,android --no-cache; then
+              echo "pipeline_status=success_after_retry" >> "$GITHUB_OUTPUT"
+            else
+              echo "pipeline_status=failed" >> "$GITHUB_OUTPUT"
+              python error_dashboard.py "1"
+            fi
+          fi
         env:
           ANALYSIS_PROVIDER: ${{ vars.ANALYSIS_PROVIDER || 'copilot' }}
           GITHUB_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
@@ -36,6 +53,7 @@ jobs:
           REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
 
       - name: Upload to SharePoint
+        if: steps.pipeline.outputs.pipeline_status != 'failed'
         run: |
           if [ -z "$GRAPH_CLIENT_ID" ]; then
             echo "SharePoint secrets not configured, skipping upload"
@@ -64,6 +82,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SYSTEM_ACCESSTOKEN: ${{ secrets.ADO_PAT }}
+          PIPELINE_STATUS: ${{ steps.pipeline.outputs.pipeline_status }}
+          PIPELINE_FIRST_ERROR_TIME: ${{ steps.pipeline.outputs.first_error }}
 
       - name: Upload dashboard artifact
         if: always()
@@ -74,6 +94,7 @@ jobs:
           retention-days: 30
 
       - name: Deploy to GitHub Pages
+        if: always()
         run: |
           cd output_v3
           cp pulse_dashboard_v3.html index.html

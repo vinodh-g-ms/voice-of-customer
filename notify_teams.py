@@ -146,10 +146,50 @@ def _detect_warnings() -> list[dict]:
     return warnings
 
 
+def _get_pipeline_status() -> dict:
+    """Read pipeline status from environment (set by GitHub Actions workflow)."""
+    status = os.environ.get("PIPELINE_STATUS", "")
+    first_error_time = os.environ.get("PIPELINE_FIRST_ERROR_TIME", "")
+
+    if status == "failed":
+        return {
+            "icon": "❌",
+            "text": "Pipeline failed after retry",
+            "detail": f"First failure at {first_error_time}. Retried after 5 min — still failed. Error dashboard deployed instead." if first_error_time else "Pipeline failed. Error dashboard deployed instead.",
+            "color": "Attention",
+            "failed": True,
+        }
+    elif status == "success_after_retry":
+        return {
+            "icon": "⚠️",
+            "text": "Pipeline succeeded after retry",
+            "detail": f"First attempt failed at {first_error_time}. Retried after 5 min — succeeded." if first_error_time else "First attempt failed. Retried after 5 min — succeeded.",
+            "color": "Warning",
+            "failed": False,
+        }
+    else:
+        return {
+            "icon": "✅",
+            "text": "Pipeline completed successfully",
+            "detail": "",
+            "color": "Good",
+            "failed": False,
+        }
+
+
 def build_adaptive_card(summary: dict, dashboard_url: str) -> dict:
     """Build a rich Teams Adaptive Card with per-platform issues."""
     platforms_str = ", ".join(summary["platforms"]) if summary["platforms"] else "See dashboard"
     warnings = _detect_warnings()
+    pipeline = _get_pipeline_status()
+
+    # Determine status line
+    if pipeline["failed"]:
+        status_value = f"{pipeline['icon']} {pipeline['text']}"
+    elif warnings:
+        status_value = "⚠️ Completed with warnings"
+    else:
+        status_value = f"{pipeline['icon']} {pipeline['text']}"
 
     body = [
         # Header
@@ -178,11 +218,20 @@ def build_adaptive_card(summary: dict, dashboard_url: str) -> dict:
                 {"title": "Generated", "value": summary["timestamp"]},
                 {"title": "Platforms", "value": platforms_str},
                 {"title": "Reviews Analyzed", "value": f"{summary['total_reviews']:,}" if summary["total_reviews"] else "—"},
-                {"title": "Status", "value": "✅ Pipeline completed successfully" if not warnings else "⚠️ Completed with warnings"},
+                {"title": "Status", "value": status_value},
             ],
             "separator": True,
         },
     ]
+
+    # Pipeline failure/retry detail
+    if pipeline["detail"]:
+        body.append({
+            "type": "TextBlock",
+            "text": f"**{pipeline['icon']} {pipeline['detail']}**",
+            "wrap": True, "spacing": "Medium",
+            "color": pipeline["color"],
+        })
 
     # Per-platform top 3 issues
     for plat in summary["platforms"]:
@@ -230,6 +279,11 @@ def build_adaptive_card(summary: dict, dashboard_url: str) -> dict:
         "type": "Action.OpenUrl", "title": "⚙️ Pipeline Logs",
         "url": f"https://github.com/{GITHUB_REPO}/actions",
     })
+    if pipeline["failed"]:
+        actions.insert(0, {
+            "type": "Action.OpenUrl", "title": "🔄 Re-run Pipeline",
+            "url": f"https://github.com/{GITHUB_REPO}/actions/workflows/daily-voc.yml",
+        })
     if warnings:
         actions.append({
             "type": "Action.OpenUrl", "title": "🔑 Manage Secrets",
