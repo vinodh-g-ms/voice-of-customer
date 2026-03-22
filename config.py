@@ -49,11 +49,11 @@ CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 CLAUDE_MAX_TOKENS = 16384
 CLAUDE_MAX_REVIEWS = 500
 
-# GitHub Copilot (Models API)
-COPILOT_BASE_URL = "https://models.github.ai/inference"
-COPILOT_MODEL = os.environ.get("COPILOT_MODEL") or "openai/gpt-4.1"
-COPILOT_MAX_TOKENS = 16384
-COPILOT_MAX_REVIEWS = int(os.environ.get("COPILOT_MAX_REVIEWS") or 100)
+# GitHub Copilot API
+COPILOT_BASE_URL = "https://api.githubcopilot.com"
+COPILOT_MODEL = os.environ.get("COPILOT_MODEL") or "gpt-5.4"
+COPILOT_MAX_TOKENS = 32768
+COPILOT_MAX_REVIEWS = int(os.environ.get("COPILOT_MAX_REVIEWS") or 500)
 
 # ── Azure DevOps ───────────────────────────────────────────────────
 ADO_ORG_URL = "https://office.visualstudio.com"

@@ -120,29 +120,105 @@ def _load_manual_links() -> list[dict]:
     return active
 
 
+_MATCH_STOP_WORDS = {
+    "the", "a", "an", "is", "are", "was", "were", "in", "on", "at",
+    "to", "for", "of", "with", "not", "no", "and", "or", "but",
+    "app", "outlook", "issue", "issues", "problem", "problems",
+    "users", "report", "after", "when", "new", "has", "have",
+}
+
+
 def _get_manual_matches(
     cluster_topic: str, platform: str, links: list[dict],
 ) -> list[ADOMatch]:
-    """Find manual links matching this cluster topic (fuzzy match)."""
+    """Find manual links matching this cluster topic (fuzzy + keyword match)."""
     matches = []
     topic_lower = cluster_topic.lower()
+    topic_words = set(re.findall(r'\b[a-z]{3,}\b', topic_lower)) - _MATCH_STOP_WORDS
+
     for link in links:
         if link.get("platform", "") != platform:
             continue
         link_topic = link.get("cluster_topic", "").lower()
-        # Exact or high fuzzy match (topics may differ slightly between runs)
-        ratio = SequenceMatcher(None, topic_lower, link_topic).ratio()
-        if ratio >= 0.6:
+        link_words = set(re.findall(r'\b[a-z]{3,}\b', link_topic)) - _MATCH_STOP_WORDS
+
+        # Match via SequenceMatcher OR keyword overlap
+        seq_ratio = SequenceMatcher(None, topic_lower, link_topic).ratio()
+        keyword_overlap = len(topic_words & link_words) / max(len(link_words), 1) if link_words else 0
+
+        if seq_ratio >= 0.45 or keyword_overlap >= 0.4:
             ado_id = link.get("ado_id", 0)
             if ado_id:
                 matches.append(ADOMatch(
                     work_item_id=ado_id,
-                    title=f"[Manual link by {link.get('linked_by', 'user')}]",
+                    title=f"[Pinned by {link.get('linked_by', 'user')}]",
                     state="Linked",
                     url=f"{config.ADO_ORG_URL}/{config.ADO_PROJECT}/_workitems/edit/{ado_id}",
                     changed_date=None,
                 ))
     return matches
+
+
+def _resolve_manual_titles(matches: list[ADOMatch], auth_mode: str) -> None:
+    """Batch-fetch real titles from ADO for manually linked bugs."""
+    if auth_mode == "none" or not matches:
+        return
+    pinned = [m for m in matches if m.title.startswith("[Pinned")]
+    if not pinned:
+        return
+
+    ids = list({m.work_item_id for m in pinned})
+    ids_param = ",".join(str(i) for i in ids)
+    fields = "System.Title,System.State,System.AssignedTo,System.ChangedDate"
+    url = (
+        f"{config.ADO_ORG_URL}/{config.ADO_PROJECT}"
+        f"/_apis/wit/workitems?ids={ids_param}&fields={fields}&api-version=7.0"
+    )
+
+    try:
+        if auth_mode == "pat":
+            pat = os.environ["SYSTEM_ACCESSTOKEN"]
+            b64 = base64.b64encode(f":{pat}".encode()).decode()
+            resp = http_requests.get(url, headers={"Authorization": f"Basic {b64}"}, timeout=15)
+        else:
+            r = subprocess.run(
+                ["az", "rest", "--method", "get", "--url", url,
+                 "--resource", config.ADO_RESOURCE_ID],
+                capture_output=True, text=True, timeout=15,
+            )
+            if r.returncode != 0:
+                return
+            resp = None
+            data = json.loads(r.stdout)
+
+        if resp is not None:
+            if resp.status_code != 200:
+                return
+            data = resp.json()
+
+        lookup = {}
+        for wi in data.get("value", []):
+            wid = wi.get("id")
+            f = wi.get("fields", {})
+            assigned = f.get("System.AssignedTo", "")
+            if isinstance(assigned, dict):
+                assigned = assigned.get("displayName", "")
+            lookup[wid] = {
+                "title": f.get("System.Title", ""),
+                "state": f.get("System.State", ""),
+                "assigned_to": assigned,
+                "changed_date": _pd(f.get("System.ChangedDate", "")),
+            }
+
+        for m in pinned:
+            info = lookup.get(m.work_item_id)
+            if info and info["title"]:
+                m.title = info["title"]
+                m.state = info["state"]
+                m.assigned_to = info["assigned_to"]
+                m.changed_date = info["changed_date"]
+    except Exception:
+        pass  # keep "[Pinned by ...]" titles on failure
 
 
 def correlate_clusters(
@@ -171,8 +247,9 @@ def correlate_clusters(
     area_paths = config.ADO_AREA_PATHS.get(platform, [])
 
     for cluster in clusters:
-        # Inject manual links first (pinned by user)
+        # Inject manual links first (pinned by user), resolve real titles
         pinned = _get_manual_matches(cluster.topic, platform, manual_links)
+        _resolve_manual_titles(pinned, auth_mode)
         pinned_ids = {m.work_item_id for m in pinned}
 
         keywords = _extract_keywords(cluster.topic, platform)
