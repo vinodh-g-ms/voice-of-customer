@@ -68,6 +68,17 @@ ADO_AREA_PATHS = {
     "android": ["Outlook Mobile\\Android"],
 }
 
+# ── Semantic Matcher (ADO ↔ Review Clusters) ─────────────────────
+MATCHER_MODEL = os.environ.get("MATCHER_MODEL") or "gpt-5.4"
+MATCHER_EMBEDDING_MODEL = os.environ.get("MATCHER_EMBEDDING_MODEL") or "text-embedding-3-small"
+MATCHER_MAX_TOKENS = 8192
+MATCHER_EMBEDDING_DIMENSIONS = 1536
+MATCHER_SIMILARITY_THRESHOLD = float(os.environ.get("MATCHER_SIMILARITY_THRESHOLD") or 0.40)
+MATCHER_TOP_K_CANDIDATES = 10   # embeddings → top K per cluster
+MATCHER_TOP_K_FINAL = 5         # LLM re-rank → final top N
+MATCHER_WIQL_DAYS = 90          # WIQL recency filter
+MATCHER_WIQL_MAX_ITEMS = 500    # max ADO items per WIQL query
+
 # ── Cache ──────────────────────────────────────────────────────────
 CACHE_TTL_HOURS = 12
 
