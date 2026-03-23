@@ -52,7 +52,10 @@ def main():
             for window in config.TIME_WINDOWS:
                 rpt = composite.get(platform, window["name"])
                 if rpt:
-                    phase_correlate(rpt, platform, window["days"])
+                    if args.semantic_match:
+                        phase_correlate_semantic(rpt, platform, window["days"])
+                    else:
+                        phase_correlate(rpt, platform, window["days"])
         else:
             for _, rpt in composite.reports.items():
                 if not any("skipped" in n for n in rpt.data_quality_notes):
@@ -68,6 +71,8 @@ def parse_args():
     p.add_argument("--topic", default="")
     p.add_argument("--sources", default="all")
     p.add_argument("--skip-ado", action="store_true")
+    p.add_argument("--semantic-match", action="store_true",
+                   help="Use semantic (embedding + LLM) ADO matching instead of keyword search")
     p.add_argument("--no-cache", action="store_true")
     return p.parse_args()
 
@@ -151,6 +156,19 @@ def phase_correlate(report, platform, max_age_days):
     except Exception as e:
         print(f"  [error] ADO: {e}")
         report.data_quality_notes.append(f"ADO failed: {e}")
+
+
+def phase_correlate_semantic(report, platform, max_age_days):
+    from ado_matcher import match_clusters_semantic
+    print(f"\n  Phase 3: CORRELATE/SEMANTIC ({platform}/{report.period_label}, max {max_age_days}d)")
+    print("  " + "-" * 48)
+    try:
+        match_clusters_semantic(report.clusters, platform=platform, max_age_days=max_age_days)
+        total = sum(len(c.ado_matches) for c in report.clusters)
+        print(f"  Semantic matches ({platform}/{report.period_label}): {total}")
+    except Exception as e:
+        print(f"  [error] Semantic matcher: {e}")
+        report.data_quality_notes.append(f"Semantic matching failed: {e}")
 
 
 def phase_report(composite, args):
