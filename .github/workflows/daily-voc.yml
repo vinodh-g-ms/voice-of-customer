@@ -3,7 +3,16 @@ name: Customer Pulse - Daily VoC
 on:
   schedule:
     - cron: '0 6 * * *'  # Every day at 6 AM UTC
-  workflow_dispatch:       # Manual trigger button
+  workflow_dispatch:
+    inputs:
+      semantic_match:
+        description: 'Use semantic (embedding + LLM) ADO matching'
+        type: boolean
+        default: false
+      platforms:
+        description: 'Platforms to analyze'
+        type: string
+        default: 'ios,mac,android'
 
 permissions:
   contents: write
@@ -28,8 +37,15 @@ jobs:
       - name: Run VoC Pipeline (with retry)
         id: pipeline
         run: |
+          PLATFORMS="${{ inputs.platforms || 'ios,mac,android' }}"
+          EXTRA_FLAGS=""
+          if [ "${{ inputs.semantic_match }}" = "true" ]; then
+            EXTRA_FLAGS="--semantic-match"
+            echo "::notice::Semantic matching enabled (embeddings + LLM re-rank)"
+          fi
+
           # Attempt 1
-          if python main.py --platforms ios,mac,android; then
+          if python main.py --platforms "$PLATFORMS" $EXTRA_FLAGS; then
             echo "pipeline_status=success" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::Pipeline failed on first attempt, retrying in 5 minutes..."
@@ -37,7 +53,7 @@ jobs:
             sleep 300
 
             # Attempt 2 (fresh data, no cache)
-            if python main.py --platforms ios,mac,android --no-cache; then
+            if python main.py --platforms "$PLATFORMS" $EXTRA_FLAGS --no-cache; then
               echo "pipeline_status=success_after_retry" >> "$GITHUB_OUTPUT"
             else
               exit_code=$?
