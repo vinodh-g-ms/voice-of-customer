@@ -64,12 +64,17 @@ ADO_MAX_RESULTS = 15
 # Area paths per platform for filtering ADO results
 ADO_AREA_PATHS = {
     "ios": ["Outlook Mobile\\iOS"],
-    "mac": ["Outlook Mobile\\OS X"],
+    "mac": ["OC\\Outlook\\Mac"],
     "android": ["Outlook Mobile\\Android"],
+}
+# Per-platform ADO project override (defaults to ADO_PROJECT if absent)
+ADO_PLATFORM_PROJECT = {
+    "mac": "OC",
 }
 
 # ── Semantic Matcher (ADO ↔ Review Clusters) ─────────────────────
 MATCHER_MODEL = os.environ.get("MATCHER_MODEL") or "gpt-5.4"
+MATCHER_EMBEDDING_URL = os.environ.get("MATCHER_EMBEDDING_URL") or "https://models.inference.ai.azure.com/embeddings"
 MATCHER_EMBEDDING_MODEL = os.environ.get("MATCHER_EMBEDDING_MODEL") or "text-embedding-3-small"
 MATCHER_MAX_TOKENS = 8192
 MATCHER_EMBEDDING_DIMENSIONS = 1536

@@ -20,7 +20,14 @@ class TestParseArgs:
         assert args.topic == ""
         assert args.sources == "all"
         assert args.skip_ado is False
+        assert args.semantic_match is False
         assert args.no_cache is False
+
+    def test_semantic_match_flag(self):
+        with patch("sys.argv", ["main.py", "--semantic-match"]):
+            from main import parse_args
+            args = parse_args()
+        assert args.semantic_match is True
 
     def test_custom_args(self):
         with patch("sys.argv", [
@@ -138,6 +145,56 @@ class TestPhaseCorrelate:
         assert any("ADO failed" in n for n in report.data_quality_notes)
 
 
+class TestPhaseCorrelateSemantic:
+    def test_calls_semantic_matcher(self):
+        from main import phase_correlate_semantic
+        from tests.conftest import make_ado_match
+        report = PulseReport(
+            generated_at=datetime.now(timezone.utc),
+            days_analyzed=15, total_reviews=50,
+            overall_sentiment=-0.3, overall_summary="Test",
+            clusters=[TopicCluster(topic="T", severity="high", count=5,
+                                   sentiment_score=-0.3, summary="S",
+                                   ado_matches=[make_ado_match()])],
+            platform="ios", period_label="15d",
+        )
+        with patch("ado_matcher.match_clusters_semantic") as mock_match:
+            mock_match.return_value = report.clusters
+            phase_correlate_semantic(report, "ios", 90)
+        mock_match.assert_called_once_with(report.clusters, platform="ios", max_age_days=90)
+
+    def test_error_falls_back_to_keyword(self):
+        from main import phase_correlate_semantic
+        report = PulseReport(
+            generated_at=datetime.now(timezone.utc),
+            days_analyzed=15, total_reviews=50,
+            overall_sentiment=-0.3, overall_summary="Test",
+            clusters=[TopicCluster(topic="T", severity="high", count=5,
+                                   sentiment_score=-0.3, summary="S")],
+            platform="ios", period_label="15d",
+        )
+        with patch("ado_matcher.match_clusters_semantic", side_effect=Exception("Matcher error")), \
+             patch("main.phase_correlate") as mock_kw:
+            phase_correlate_semantic(report, "ios", 90)
+        mock_kw.assert_called_once_with(report, "ios", 90)
+
+    def test_zero_matches_falls_back_to_keyword(self):
+        from main import phase_correlate_semantic
+        report = PulseReport(
+            generated_at=datetime.now(timezone.utc),
+            days_analyzed=15, total_reviews=50,
+            overall_sentiment=-0.3, overall_summary="Test",
+            clusters=[TopicCluster(topic="T", severity="high", count=5,
+                                   sentiment_score=-0.3, summary="S")],
+            platform="ios", period_label="15d",
+        )
+        with patch("ado_matcher.match_clusters_semantic") as mock_sem, \
+             patch("main.phase_correlate") as mock_kw:
+            mock_sem.return_value = report.clusters  # 0 matches
+            phase_correlate_semantic(report, "ios", 90)
+        mock_kw.assert_called_once_with(report, "ios", 90)
+
+
 class TestSkipAdo:
     def test_skip_ado_adds_note(self):
         comp = CompositePulseReport(generated_at=datetime.now(timezone.utc))
@@ -178,6 +235,34 @@ class TestFullPipeline:
                 platform="ios", period_label="15d",
             )
             main()
+
+    def test_semantic_match_calls_semantic_correlator(self):
+        """Verify --semantic-match routes to phase_correlate_semantic."""
+        from main import main
+        mock_reviews = [
+            Review(source="appstore", title="Test", body="Body", rating=3,
+                   author="u",
+                   date=datetime.now(timezone.utc) - timedelta(days=5),
+                   platform="ios"),
+        ] * 10
+
+        with patch("sys.argv", ["main.py", "--platforms", "ios", "--semantic-match"]), \
+             patch("main.phase_fetch", return_value=mock_reviews), \
+             patch("main.phase_analyze") as mock_analyze, \
+             patch("main.phase_trends"), \
+             patch("main.phase_correlate_semantic") as mock_sem, \
+             patch("main.phase_correlate") as mock_kw, \
+             patch("main.phase_report"):
+            mock_analyze.return_value = PulseReport(
+                generated_at=datetime.now(timezone.utc),
+                days_analyzed=15, total_reviews=10,
+                overall_sentiment=-0.3, overall_summary="Test",
+                platform="ios", period_label="15d",
+            )
+            main()
+        # semantic correlator should be called, not keyword
+        assert mock_sem.call_count > 0
+        assert mock_kw.call_count == 0
 
     def test_no_reviews_skips_platform(self):
         """When no reviews are found for a platform, it's skipped."""

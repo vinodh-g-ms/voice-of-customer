@@ -50,10 +50,11 @@ def _ado_headers_pat() -> dict:
     return {"Authorization": f"Basic {b64}", "Content-Type": "application/json"}
 
 
-def _run_wiql(query: str, auth_mode: str) -> list[int]:
+def _run_wiql(query: str, auth_mode: str, project: str = "") -> list[int]:
     """Execute a WIQL query and return work item IDs."""
+    proj = project or config.ADO_PROJECT
     url = (
-        f"{config.ADO_ORG_URL}/{config.ADO_PROJECT}"
+        f"{config.ADO_ORG_URL}/{proj}"
         f"/_apis/wit/wiql?api-version=7.0&$top={config.MATCHER_WIQL_MAX_ITEMS}"
     )
     payload = {"query": query}
@@ -79,11 +80,12 @@ def _run_wiql(query: str, auth_mode: str) -> list[int]:
     return [wi["id"] for wi in data.get("workItems", [])]
 
 
-def _fetch_work_items(ids: list[int], auth_mode: str) -> list[dict]:
+def _fetch_work_items(ids: list[int], auth_mode: str, project: str = "") -> list[dict]:
     """Batch-fetch work item details (title, description, state, etc.)."""
     if not ids:
         return []
 
+    proj = project or config.ADO_PROJECT
     items = []
     # ADO batch API supports up to 200 IDs per request
     for i in range(0, len(ids), 200):
@@ -95,7 +97,7 @@ def _fetch_work_items(ids: list[int], auth_mode: str) -> list[dict]:
             "System.CreatedDate,System.WorkItemType,System.Tags"
         )
         url = (
-            f"{config.ADO_ORG_URL}/{config.ADO_PROJECT}"
+            f"{config.ADO_ORG_URL}/{proj}"
             f"/_apis/wit/workitems?ids={ids_param}&fields={fields}"
             f"&api-version=7.0"
         )
@@ -146,7 +148,6 @@ def _build_wiql(platform: str, days: int) -> str:
     area_paths = config.ADO_AREA_PATHS.get(platform, [])
     area_clause = ""
     if area_paths:
-        # Use the first area path with UNDER for hierarchy matching
         area_clause = f"AND [System.AreaPath] UNDER '{area_paths[0]}'"
 
     return f"""
@@ -167,7 +168,7 @@ def _get_embeddings(texts: list[str]) -> list[list[float]]:
     if not token:
         raise RuntimeError("GITHUB_TOKEN or GH_MODELS_TOKEN required for embeddings")
 
-    url = f"{config.COPILOT_BASE_URL}/embeddings"
+    url = config.MATCHER_EMBEDDING_URL
     embeddings = []
 
     # Batch in groups of 100 (API limit)
@@ -387,18 +388,19 @@ def match_clusters_semantic(
 
     days = max_age_days or config.MATCHER_WIQL_DAYS
     auth_mode = _get_auth_mode()
+    project = config.ADO_PLATFORM_PROJECT.get(platform, config.ADO_PROJECT)
 
     if auth_mode == "none":
         print("  [warn] Semantic matcher: no ADO auth available, skipping")
         return clusters
 
-    print(f"  Semantic matcher: auth={auth_mode}, platform={platform}, lookback={days}d")
+    print(f"  Semantic matcher: auth={auth_mode}, platform={platform}, project={project}, lookback={days}d")
 
     # ── Phase 1: WIQL pre-filter ──────────────────────────────────
     print("  Phase 1: Fetching ADO work items via WIQL...")
     wiql = _build_wiql(platform, days)
     try:
-        item_ids = _run_wiql(wiql, auth_mode)
+        item_ids = _run_wiql(wiql, auth_mode, project=project)
     except Exception as e:
         print(f"  [error] WIQL query failed: {e}")
         return clusters
@@ -410,7 +412,7 @@ def match_clusters_semantic(
     print(f"  WIQL returned {len(item_ids)} work item IDs")
 
     try:
-        ado_items = _fetch_work_items(item_ids, auth_mode)
+        ado_items = _fetch_work_items(item_ids, auth_mode, project=project)
     except Exception as e:
         print(f"  [error] Work item fetch failed: {e}")
         return clusters
@@ -489,7 +491,7 @@ def match_clusters_semantic(
                 title=item["title"],
                 state=item["state"],
                 assigned_to=item.get("assigned_to", ""),
-                url=f"{config.ADO_ORG_URL}/{config.ADO_PROJECT}/_workitems/edit/{item['id']}",
+                url=f"{config.ADO_ORG_URL}/{project}/_workitems/edit/{item['id']}",
                 changed_date=changed,
             ))
 

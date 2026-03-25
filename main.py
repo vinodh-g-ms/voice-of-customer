@@ -166,9 +166,13 @@ def phase_correlate_semantic(report, platform, max_age_days):
         match_clusters_semantic(report.clusters, platform=platform, max_age_days=max_age_days)
         total = sum(len(c.ado_matches) for c in report.clusters)
         print(f"  Semantic matches ({platform}/{report.period_label}): {total}")
+        if total == 0:
+            print("  [fallback] No semantic matches, trying keyword search...")
+            phase_correlate(report, platform, max_age_days)
     except Exception as e:
         print(f"  [error] Semantic matcher: {e}")
-        report.data_quality_notes.append(f"Semantic matching failed: {e}")
+        print("  [fallback] Falling back to keyword search...")
+        phase_correlate(report, platform, max_age_days)
 
 
 def phase_report(composite, args):
